@@ -22,6 +22,10 @@ Fallback when no project skill or instruction covers a topic. Report only real, 
 - Follows the existing patterns and naming of the codebase; no dead code, duplicated logic or speculative abstraction.
 - Public behavior changes are documented where the project documents them.
 
+## Architecture docs
+- New or changed integrations, flows, security rules, data stores and component boundaries are reflected in the architecture docs, with sources and Mermaid diagrams that match the code.
+- New architecture decisions are recorded as ADRs; existing ADRs are respected or explicitly superseded.
+
 ## Tests
 - Tests prove the behavior (they would fail without the change), are deterministic, and cover the acceptance criteria.
 - Bug fixes include a regression test.

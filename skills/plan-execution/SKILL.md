@@ -12,7 +12,7 @@ description: 'Execute a validated plan.md. Builder: orchestrate implementer and 
 3. **Delegate the lots** to the `implementer` subagent:
    - one lot in the plan: a single implementer run;
    - several lots: one implementer run per lot, sequentially, in plan order.
-   The subagent does not see this conversation. Give it the slug, the lot number, the paths of `brief.md` and `plan.md`, the build and test commands, and every decision taken since the plan was written. After each lot, check the report: tests green, exactly one new commit, deviations. Stop and escalate on any `PLAN DEVIATION` that changes the scope, the design or the acceptance criteria.
+   The subagent does not see this conversation. Give it the slug, the lot number, the paths of `brief.md` and `plan.md`, the build and test commands, the architecture docs folder, and every decision taken since the plan was written. After each lot, check the report: tests green, exactly one new commit, the documentation impact of the lot applied, deviations. Stop and escalate on any `PLAN DEVIATION` that changes the scope, the design or the acceptance criteria.
 4. **Review loop.**
    - Once all lots are committed, run the `reviewer` subagent on `<merge-base>..HEAD` and increment `review_iterations`.
    - `APPROVED`: continue.
@@ -28,10 +28,11 @@ description: 'Execute a validated plan.md. Builder: orchestrate implementer and 
 
 1. Read `brief.md`, `plan.md` (your lot, plus the context and decision sections), the project contract, and the instructions and skills that apply to the files you touch.
 2. Write or update the tests of the lot first when feasible (a failing test for a bug fix), then implement only the tasks of your lot. No unrelated refactoring, formatting sweep or dependency upgrade.
-3. Run the build, lint and test commands of the project contract. Fix the failures your change causes; report pre-existing failures without fixing them.
-4. Commit once per lot: stage the lot's files only and use the commit message of the plan (`<type>(<scope>): <summary>`). Do not mention work item IDs in commit messages and never use closing keywords.
-5. Never push, never write under `.ai/`, never rewrite shared history (`--amend` only on your own lot commit, no `rebase -i`, no `reset --hard`).
-6. **Plan deviation protocol:** if the plan is wrong, incomplete or impossible, stop and report `PLAN DEVIATION` with the evidence and the options. Small adjustments that change neither the scope, nor the design, nor the acceptance criteria (a helper name, an extra test) are allowed but must be listed.
+3. **Apply the documentation impact of your lot** (the `Documentation impact` section of `plan.md`), following the page rules of the `architecture-mapping` skill: sourced statements, Mermaid diagrams, `verified_on` set to today on each page you checked, new ADRs from its template. If the code you wrote changes an integration, a flow, a security rule, a data store or a component boundary that the plan did not list, update the page too and report it as a deviation.
+4. Run the build, lint and test commands of the project contract. Fix the failures your change causes; report pre-existing failures without fixing them.
+5. Commit once per lot, documentation included: stage the lot's files only and use the commit message of the plan (`<type>(<scope>): <summary>`). Do not mention work item IDs in commit messages and never use closing keywords.
+6. Never push, never write under `.ai/`, never rewrite shared history (`--amend` only on your own lot commit, no `rebase -i`, no `reset --hard`).
+7. **Plan deviation protocol:** if the plan is wrong, incomplete or impossible, stop and report `PLAN DEVIATION` with the evidence and the options. Small adjustments that change neither the scope, nor the design, nor the acceptance criteria (a helper name, an extra test) are allowed but must be listed.
 
 ### Lot report (returned to the builder)
 
@@ -40,6 +41,7 @@ Lot: <n> — <title>
 Commit: <sha> <message>
 Files changed: <list>
 Tests added or updated: <list, mapped to acceptance criteria>
+Documentation updated: <pages and ADRs | none (as planned)>
 Commands run: <command> → <result>
 Deviations: <none | list>
 Notes for the reviewer: <risky spots, trade-offs>

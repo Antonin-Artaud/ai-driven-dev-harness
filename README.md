@@ -1,6 +1,6 @@
 # ai-delivery-workflow
 
-Plugin d'agents (format [Agent Plugins 1.0](https://agent-plugins.org/)) pour VS Code et GitHub Copilot. Il transforme une demande (prompt, spec ou work item Azure DevOps) en **PR draft Azure Repos** relue. Le parcours passe par un challenge du besoin métier, un plan d'architecture, une implémentation qui suit le plan et une review indépendante fondée sur les skills du projet.
+Plugin d'agents (format [Agent Plugins 1.0](https://agent-plugins.org/)) pour VS Code et GitHub Copilot. Il transforme une demande (prompt, spec ou work item Azure DevOps) en **PR draft Azure Repos** relue. Le parcours passe par un challenge du besoin métier, un plan d'architecture qui part de la cartographie du projet, une implémentation qui suit le plan et met cette cartographie à jour, et une review indépendante fondée sur les skills du projet.
 
 ```
 challenger ─▶ architect ─▶ builder ─▶ PR draft ─▶ ta revue dans Azure DevOps ─▶ builder (retours) ─▶ tu publies
@@ -15,11 +15,11 @@ Chaque passage entre agents interactifs est un **handoff** (`send: false`) : tu 
 | Élément | Rôle |
 |---|---|
 | `challenger` (agent) | Challenge le besoin, trie la demande (fast, standard, feature) et produit `brief.md` |
-| `architect` (agent) | Cartographie l'existant, compare des options, conteste ta vision et produit `plan.md` découpé en lots |
+| `architect` (agent) | Part de la cartographie `docs/architecture/`, vérifie dans le code, compare des options, conteste ta vision et produit `plan.md` découpé en lots, avec l'impact sur la doc |
 | `builder` (agent) | Orchestre implementer et reviewer, pousse la branche, ouvre la PR draft et traite les commentaires de PR |
-| `implementer` (subagent caché) | Implémente un lot : tests, code, un commit |
-| `reviewer` (subagent caché) | Relit `merge-base..HEAD` en appliquant d'abord les skills du projet, puis écrit `review.md` |
-| `skills/` | `delivery-workflow`, `business-challenge`, `solution-design`, `plan-execution`, `code-review`, `pr-feedback`, `azure-devops`, `project-onboarding` |
+| `implementer` (subagent caché) | Implémente un lot : tests, code, mise à jour de la doc d'architecture, un commit |
+| `reviewer` (subagent caché) | Relit `merge-base..HEAD` en appliquant d'abord les skills du projet, vérifie que la doc d'architecture suit le code, puis écrit `review.md` |
+| `skills/` | `delivery-workflow`, `business-challenge`, `solution-design`, `plan-execution`, `code-review`, `pr-feedback`, `azure-devops`, `project-onboarding`, `architecture-mapping` |
 | `com.github.copilot/hooks/hooks.json` | Garde-fous déterministes `PreToolUse` et `Stop` (scripts Python, bibliothèque standard uniquement) |
 
 Les agents restent légers. Toute la méthode vit dans les skills, un format portable, et chaque projet garde la main grâce à ses propres skills : **les skills du projet passent avant ceux du plugin**.
@@ -60,10 +60,12 @@ Dans les deux cas, le workspace doit être approuvé (*trusted*), sinon les hook
 2. L'agent exécute `skills/project-onboarding/scripts/onboard.py`, d'abord en `--dry-run` :
    - il déduit l'organisation, le projet et le repo du remote `origin` ;
    - il crée ou complète `.vscode/mcp.json` avec `ado-read` (lecture seule) et `ado-write` (PR draft et commentaires uniquement) ;
-   - il ajoute `.ai/` à `.git/info/exclude`, sans toucher au `.gitignore` de l'équipe.
-3. Il rédige la section **AI delivery workflow** de `AGENTS.md` : commandes, branche de base, glossaire et correspondance optionnelle entre étapes et skills du projet. Il te demande validation avant d'écrire.
-4. Commite `AGENTS.md`, et `.vscode/mcp.json` s'il est suivi par git, sur la branche de base. Le builder exige un arbre de travail propre avant de créer sa branche `ai/<slug>`.
-5. Démarre `ado-read` et `ado-write` depuis la vue MCP (connexion Entra).
+   - il ajoute `.ai/` à `.git/info/exclude`, sans toucher au `.gitignore` de l'équipe ;
+   - avec `--docs`, il crée le squelette de la cartographie dans `docs/architecture/` (ou `--docs-path <dossier>`), sans écraser l'existant.
+3. Il te propose de cartographier l'application (skill `architecture-mapping`) : il te montre les pages et les points « À confirmer », puis les commite sur une branche dédiée pour une PR.
+4. Il rédige la section **AI delivery workflow** de `AGENTS.md` : commandes, branche de base, glossaire et correspondance optionnelle entre étapes et skills du projet. Il te demande validation avant d'écrire.
+5. Commite `AGENTS.md`, et `.vscode/mcp.json` s'il est suivi par git, sur la branche de base. Le builder exige un arbre de travail propre avant de créer sa branche `ai/<slug>`.
+6. Démarre `ado-read` et `ado-write` depuis la vue MCP (connexion Entra).
 
 ## Utilisation
 
@@ -74,6 +76,24 @@ Dans les deux cas, le workspace doit être approuvé (*trusted*), sinon les hook
 5. Relis la PR draft dans Azure DevOps et commente.
 6. De retour dans VS Code, clique sur **Address PR feedback**. Le builder classe les commentaires ; **tu valides ce classement**, puis il corrige, fait relire et répond à chaque fil.
 7. Publie la PR toi-même. Mets ensuite `phase` à `done` dans `.ai/<slug>/state.json`, ou demande-le au builder.
+
+## Cartographie de l'application (`docs/architecture/`)
+
+Contrairement à `.ai/`, la cartographie est commitée avec le code. Le dossier est configurable dans la section **AI delivery workflow** de `AGENTS.md` (`docs/architecture/` par défaut).
+
+| Page | Contenu |
+|---|---|
+| `README.md` | Index, points « À confirmer » |
+| `context.md`, `containers.md` | C4 niveaux 1 et 2 |
+| `components.md` | Modules, couches, dépendances autorisées |
+| `integrations.md` | API externes et diagrammes de séquence des flux critiques |
+| `data.md`, `security.md`, `quality.md` | Données, sécurité, qualités (performance, fiabilité, observabilité) |
+| `glossary.md` | Glossaire métier |
+| `decisions/` | ADR numérotés |
+
+Règles : chaque affirmation cite le fichier du code dont elle vient, ce qui n'est pas prouvé est marqué « À confirmer », les schémas sont en Mermaid, et aucun secret ni URL interne n'y figure.
+
+Cycle de vie : l'architect lit la cartographie et regarde ce qui a changé depuis le dernier commit de chaque page ; le plan liste l'**impact sur la doc** (ou `none` avec la raison, par exemple un changement de libellé) ; l'implementer met la doc à jour dans la même PR ; le reviewer signale en `major` un changement d'intégration, de flux, de règle de sécurité, de stockage ou de composant sans mise à jour. Hors workflow, `architecture-mapping --refresh` rattrape les écarts. Aucun hook ne contrôle la doc : c'est le rôle du reviewer.
 
 ## Garde-fous (hooks)
 
@@ -123,7 +143,7 @@ cd tests
 python -m unittest
 ```
 
-Couvert par les tests : décisions des hooks (payloads Local et Copilot), contrôle de review sur de vrais dépôts git temporaires, script d'onboarding, cohérence des skills, des agents et des hooks.
+Couvert par les tests : décisions des hooks (payloads Local et Copilot), contrôle de review sur de vrais dépôts git temporaires, script d'onboarding (dont le squelette de la cartographie), cohérence des skills, des agents et des hooks.
 
 ## Points à vérifier au premier essai
 

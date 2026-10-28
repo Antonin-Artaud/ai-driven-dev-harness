@@ -17,6 +17,7 @@ iteration: 1
 |---|---|---|
 | Lot 1 — … | done / partial / missing | `file:line`, commit |
 | AC1 — … | covered / not covered | `test name` |
+| Documentation impact | done / missing / not needed | `docs/architecture/...` |
 
 ## Findings
 | # | Severity | Location | Problem | Why | Suggested fix |

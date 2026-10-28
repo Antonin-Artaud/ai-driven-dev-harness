@@ -14,7 +14,7 @@ Goal: make sure the team builds the right thing, for the right reason, with test
    - Free text or a spec file: read it entirely.
    - Azure DevOps work item (ID or URL): follow the intake section of the `azure-devops` skill and record the ID in `state.work_item`.
    - If the Azure DevOps tools are unavailable or fail, say so and ask the user to paste the work item. Never use the az CLI.
-3. **Learn the context before asking.** Read the project contract and the glossary, then skim the code the request touches (read-only). Do not ask what the code or the docs already answer: quote what you found instead.
+3. **Learn the context before asking.** Read the project contract, the glossary and the context page of the architecture docs when they exist, then skim the code the request touches (read-only). Do not ask what the code or the docs already answer: quote what you found instead.
 4. **Triage** the request as `fast`, `standard` or `feature` (definitions in the `delivery-workflow` skill). Announce it with a one-sentence justification in your first answer and record it in `state.path`.
 5. **Challenge.** Apply the [challenge techniques](./references/challenge-techniques.md) that fit the request, not all of them. At minimum:
    - Separate the problem from the proposed solution; restate the problem in one sentence.

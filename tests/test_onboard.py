@@ -141,6 +141,52 @@ class OnboardScriptTestCase(unittest.TestCase):
         self.assertFalse(self.mcp.exists())
         self.assertEqual(summary["git_exclude"]["added"], [".ai/"])
 
+    def test_docs_skeleton_is_created_once(self) -> None:
+        docs = self.repo.path / "docs" / "architecture"
+        code, summary = self.run_onboard("--docs")
+        self.assertEqual(code, 0)
+        self.assertEqual(summary["architecture_docs"]["action"], "created")
+        self.assertEqual(
+            summary["architecture_docs"]["created"],
+            ["docs/architecture/README.md", "docs/architecture/decisions/README.md"],
+        )
+        readme = (docs / "README.md").read_text(encoding="utf-8")
+        self.assertIn("# Architecture map", readme)
+        self.assertNotIn("<YYYY-MM-DD>", readme)
+        self.assertTrue((docs / "decisions" / "README.md").is_file())
+        self.assertTrue(any("architecture-mapping" in step for step in summary["next_steps"]))
+
+        code, again = self.run_onboard("--docs")
+        self.assertEqual(again["architecture_docs"]["action"], "unchanged")
+        self.assertEqual(len(again["architecture_docs"]["existing"]), 2)
+
+    def test_docs_existing_files_are_kept(self) -> None:
+        self.repo.write("docs/architecture/README.md", "# Team map\n")
+        code, summary = self.run_onboard("--docs")
+        self.assertEqual(summary["architecture_docs"]["existing"], ["docs/architecture/README.md"])
+        self.assertEqual(summary["architecture_docs"]["created"], ["docs/architecture/decisions/README.md"])
+        text = (self.repo.path / "docs" / "architecture" / "README.md").read_text(encoding="utf-8")
+        self.assertEqual(text, "# Team map\n")
+
+    def test_docs_custom_path_and_dry_run(self) -> None:
+        code, summary = self.run_onboard("--dry-run", "--docs-path", "./documentation\\archi/")
+        self.assertEqual(code, 0)
+        self.assertEqual(summary["architecture_docs"]["path"], "documentation/archi")
+        self.assertEqual(summary["architecture_docs"]["action"], "created")
+        self.assertFalse((self.repo.path / "documentation").exists())
+
+    def test_docs_path_must_stay_in_the_repository(self) -> None:
+        for path in ("../outside", "/tmp/docs", "C:/docs", "docs/../../x"):
+            with self.subTest(path=path):
+                code, summary = self.run_onboard("--docs-path", path)
+                self.assertEqual(code, 1)
+                self.assertFalse(summary["ok"])
+
+    def test_docs_are_not_created_by_default(self) -> None:
+        code, summary = self.run_onboard()
+        self.assertIsNone(summary["architecture_docs"])
+        self.assertFalse((self.repo.path / "docs").exists())
+
     def test_not_a_git_repository(self) -> None:
         folder = self.repo.base / "plain"
         folder.mkdir()

@@ -15,7 +15,7 @@ description: 'Address the comments of an Azure Repos draft pull request: list th
    - **decline:** you disagree; give the reason (brief, plan or standard).
    Mark each thread's origin: **AI** when its first comment starts with `🤖`, otherwise **human**.
 4. **Stop and ask the user to validate the triage.** Do not change any code before they confirm or amend it. Nothing has changed since the last approved review, so the review gate lets you stop.
-5. **Fix:** send the validated **fix** items to an `implementer` run as one feedback lot (several lots only for large, unrelated fixes). Then run the `reviewer` subagent on the new commits and increment `review_iterations`; the loop limit of the `plan-execution` skill applies.
+5. **Fix:** send the validated **fix** items to an `implementer` run as one feedback lot, with the architecture pages they affect, (several lots only for large, unrelated fixes). Then run the `reviewer` subagent on the new commits and increment `review_iterations`; the loop limit of the `plan-execution` skill applies.
 6. **Push** with `git push` (the user confirms; never force push).
 7. **Reply on every triaged thread** with `repo_pull_request_thread_write` `reply`. The content always starts with `🤖`:
    - fix: `🤖 Fixed in <sha7>: <what changed>`

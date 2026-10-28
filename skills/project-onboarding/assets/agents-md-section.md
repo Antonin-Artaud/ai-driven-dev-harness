@@ -15,8 +15,11 @@
 - Azure DevOps: organization `<org>`, project `<project>`, repository `<repository>`
 - Work branches: `ai/<slug>`
 
+### Architecture docs
+- Architecture docs: `<docs/architecture>` (kept up to date by every workflow PR; see the architecture-mapping skill)
+
 ### Domain
-- Glossary and domain documentation: `<path or link>`
+- Glossary and domain documentation: `<docs/architecture/glossary.md, or path or link>`
 - Key business rules: <one line each, or a link>
 
 ### Skill map (optional)

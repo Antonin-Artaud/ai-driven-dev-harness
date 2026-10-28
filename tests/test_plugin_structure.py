@@ -49,7 +49,7 @@ class ManifestTestCase(unittest.TestCase):
 class SkillsTestCase(unittest.TestCase):
     def test_skills_are_valid(self) -> None:
         folders = [path for path in SKILLS_DIR.iterdir() if path.is_dir()]
-        self.assertGreaterEqual(len(folders), 8)
+        self.assertGreaterEqual(len(folders), 9)
         for folder in folders:
             with self.subTest(skill=folder.name):
                 skill_file = folder / "SKILL.md"
@@ -100,6 +100,8 @@ class AgentsTestCase(unittest.TestCase):
             self.assertNotIn("execute", found[name][1]["tools"])
             self.assertNotIn("ado-write/*", found[name][1]["tools"])
         self.assertEqual(found["builder"][1]["agents"], ["implementer", "reviewer"])
+        architect_text = found["architect"][0].read_text(encoding="utf-8")
+        self.assertIn("`architecture-mapping` skill", architect_text)
         reviewer_models = found["reviewer"][1]["model"]
         self.assertTrue(all(model.startswith("GPT") for model in reviewer_models))
 

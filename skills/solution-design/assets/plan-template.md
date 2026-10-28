@@ -7,6 +7,8 @@
 ## Context
 <Relevant existing modules, patterns and constraints, with file paths.>
 
+- Architecture docs used: <pages read, their drift since their last commit, contradictions found — or "no architecture docs">
+
 ## Options
 | Option | Summary | Fit with existing code | Complexity | Risk | Performance | Security | Reversibility |
 |---|---|---|---|---|---|---|---|
@@ -35,6 +37,14 @@
 
 ### Lot 2 — <title>
 - …
+
+## Documentation impact
+| Page or ADR | Change | Lot |
+|---|---|---|
+| `docs/architecture/integrations.md` | <add the X API row and its sequence diagram> | 2 |
+| `docs/architecture/decisions/NNNN-<title>.md` | <new ADR from the decision above> | 2 |
+
+Or: **none** — <reason: wording, labels, styles, tests only, internal refactoring...>
 
 ## Acceptance criteria coverage
 | Criterion | Lot | Test |

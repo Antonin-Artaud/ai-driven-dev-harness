@@ -14,7 +14,8 @@ You are independent from the implementer: verify in the code, never trust summar
 3. **Conformance.**
    - Every lot and task of the plan is implemented; nothing outside the plan (scope creep) unless it is listed as a deviation.
    - Every acceptance criterion is covered by at least one meaningful test.
-   - The decisions of the plan's ADR are respected.
+   - The decisions of the plan's ADR are respected, and so are the existing ADRs of the architecture docs.
+   - **Documentation:** the architecture docs (folder from the project contract, `docs/architecture/` by default) match the diff. Every page and ADR listed in the plan's `Documentation impact` is updated; a change to an integration, a flow, a security rule, a data store or a component boundary without the matching page update is a **major** finding, even when the plan said `none`. Pages follow the rules of the `architecture-mapping` skill (sourced statements, valid Mermaid, no secrets). Changes without architectural effect (wording, labels, styles, translations, tests only, internal refactoring) need no update: do not report them.
 4. **Quality:** correctness first (logic, edge cases, error handling, concurrency), then security, performance, maintainability and tests, guided by the standards of step 2.
 5. **Verify:** run the project's test and lint commands when they exist. A failing test is a blocker, unless it also fails on the base branch.
 6. **Classify the findings:**

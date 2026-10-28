@@ -5,6 +5,8 @@
 * Detects the base branch.
 * Creates or merges ``.vscode/mcp.json`` with the ``ado-read`` and ``ado-write`` servers.
 * Adds ``.ai/`` (and a newly created, untracked ``.vscode/mcp.json``) to ``.git/info/exclude``.
+* With ``--docs``: creates the architecture map skeleton (``docs/architecture/`` by default) without
+  overwriting existing files; the architecture-mapping skill fills it.
 
 Prints a JSON summary on stdout and never prints credentials. Standard library only, Python >= 3.9.
 """
@@ -16,7 +18,8 @@ import json
 import re
 import subprocess
 import sys
-from pathlib import Path
+from datetime import date
+from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import unquote, urlsplit, urlunsplit
 
@@ -27,6 +30,13 @@ READ_TOOLSETS = "repos,wit,wiki"
 WRITE_TOOLS = "repo_pull_request_write, repo_pull_request_thread_write"
 MCP_CONFIG = ".vscode/mcp.json"
 WORKFLOW_EXCLUDE = ".ai/"
+DOCS_DEFAULT = "docs/architecture"
+DOCS_TEMPLATES = Path(__file__).resolve().parents[2] / "architecture-mapping" / "assets"
+DECISIONS_README = (
+    "# Architecture decisions\n\n"
+    "One record per significant decision, numbered `0001`, `0002`..., written from the ADR template of the "
+    "architecture-mapping skill.\n"
+)
 
 _REPO = r"(?P<repo>[^/?#\s]+?)(?:\.git)?/?$"
 _REMOTE_PATTERNS = (
@@ -245,6 +255,39 @@ def ensure_excluded(root: Path, entries: Sequence[str], dry_run: bool) -> Dict[s
     return {"path": shown, "added": missing}
 
 
+def normalize_docs_path(value: str) -> Optional[str]:
+    """Return the docs folder as a clean relative POSIX path, or None when it leaves the repository."""
+    text = value.strip().replace("\\", "/")
+    if not text or text.startswith("/") or re.match(r"^[A-Za-z]:", text):
+        return None
+    parts = [part for part in PurePosixPath(text).parts if part not in ("", ".")]
+    if not parts or ".." in parts:
+        return None
+    return "/".join(parts)
+
+
+def scaffold_docs(root: Path, relative: str, dry_run: bool) -> Dict[str, Any]:
+    """Create the architecture map skeleton; existing files are never overwritten."""
+    readme = (DOCS_TEMPLATES / "readme-template.md").read_text(encoding="utf-8")
+    files = {
+        "README.md": readme.replace("<YYYY-MM-DD>", date.today().isoformat()),
+        "decisions/README.md": DECISIONS_README,
+    }
+    created: List[str] = []
+    existing: List[str] = []
+    for name, content in files.items():
+        path = root / relative / name
+        shown = f"{relative}/{name}"
+        if path.exists():
+            existing.append(shown)
+            continue
+        created.append(shown)
+        if not dry_run:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+    return {"path": relative, "action": "created" if created else "unchanged", "created": created, "existing": existing}
+
+
 def print_json(data: Any) -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -257,7 +300,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--base-branch", help="Override the detected base branch.")
     parser.add_argument("--dry-run", action="store_true", help="Show what would change without writing anything.")
     parser.add_argument("--force", action="store_true", help="Replace conflicting ado-read/ado-write definitions.")
+    parser.add_argument("--docs", action="store_true", help="Create the architecture map skeleton.")
+    parser.add_argument(
+        "--docs-path", help=f"Folder of the architecture map, relative to the repository (default: {DOCS_DEFAULT})."
+    )
     args = parser.parse_args(argv)
+    docs_path = None
+    if args.docs or args.docs_path:
+        docs_path = normalize_docs_path(args.docs_path or DOCS_DEFAULT)
+        if docs_path is None:
+            print_json({"ok": False, "error": f"--docs-path '{args.docs_path}' must be a folder inside the repository."})
+            return 1
 
     root_text = git(Path(args.repo), "rev-parse", "--show-toplevel")
     if not root_text:
@@ -299,6 +352,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             else "no 'origin' remote: add the Azure Repos remote, then rerun this script."
         )
     summary["git_exclude"] = ensure_excluded(root, exclude, args.dry_run)
+    summary["architecture_docs"] = scaffold_docs(root, docs_path, args.dry_run) if docs_path else None
+    if docs_path:
+        next_steps.append(
+            f"Map the application into {docs_path}/ with the architecture-mapping skill, then add "
+            f"'Architecture docs: {docs_path}' to the project contract."
+        )
     next_steps += [
         "Write or update the 'AI delivery workflow' section of AGENTS.md (project-onboarding skill).",
         "Enable chat.useHooks and trust this workspace so the workflow gates run.",

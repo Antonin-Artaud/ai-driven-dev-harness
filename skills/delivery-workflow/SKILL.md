@@ -64,7 +64,11 @@ Reply to the user and write the `.ai/` artifacts in the language of the user's r
 
 ## Project contract
 
-Before working, read the project's agent instructions: `AGENTS.md`, `.github/copilot-instructions.md`, and the `*.instructions.md` files whose `applyTo` matches the files you touch. The `AI delivery workflow` section of `AGENTS.md` gives the build, test and lint commands, the base branch, the Azure DevOps organization, project and repository, the domain glossary and an optional skill map. If this section is missing, tell the user and suggest the `project-onboarding` skill before going further.
+Before working, read the project's agent instructions: `AGENTS.md`, `.github/copilot-instructions.md`, and the `*.instructions.md` files whose `applyTo` matches the files you touch. The `AI delivery workflow` section of `AGENTS.md` gives the build, test and lint commands, the base branch, the Azure DevOps organization, project and repository, the architecture docs folder, the domain glossary and an optional skill map. If this section is missing, tell the user and suggest the `project-onboarding` skill before going further.
+
+## Architecture docs
+
+The project's architecture map (`docs/architecture/` by default, or the folder named in the project contract) is committed with the code, unlike `.ai/`. The architect starts from it, the plan lists its **Documentation impact**, the implementer updates it in the same PR, and the reviewer checks it. Conventions: `architecture-mapping` skill.
 
 ## Skill precedence
 
