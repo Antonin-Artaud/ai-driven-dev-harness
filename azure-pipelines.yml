@@ -1,0 +1,50 @@
+# Runs the plugin test suite (hooks, onboarding script, plugin structure) on every push to main
+# and on pull requests. Azure Repos ignores the `pr` key: add this pipeline as a build validation
+# policy on main to run it on pull requests.
+
+trigger:
+  branches:
+    include:
+      - main
+
+pr:
+  branches:
+    include:
+      - main
+
+jobs:
+  - job: tests
+    displayName: Tests
+    strategy:
+      matrix:
+        linux_python39:
+          imageName: ubuntu-latest
+          pythonVersion: '3.9'
+        linux_python312:
+          imageName: ubuntu-latest
+          pythonVersion: '3.12'
+        windows_python312:
+          imageName: windows-latest
+          pythonVersion: '3.12'
+        macos_python312:
+          imageName: macOS-latest
+          pythonVersion: '3.12'
+    pool:
+      vmImage: $(imageName)
+    steps:
+      - checkout: self
+        fetchDepth: 1
+
+      - task: UsePythonVersion@0
+        displayName: Use Python $(pythonVersion)
+        inputs:
+          versionSpec: $(pythonVersion)
+
+      - script: |
+          python --version
+          git --version
+        displayName: Show tool versions
+
+      - script: python -m unittest -v
+        displayName: Run unit tests
+        workingDirectory: tests

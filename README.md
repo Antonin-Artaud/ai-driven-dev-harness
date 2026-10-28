@@ -143,6 +143,8 @@ cd tests
 python -m unittest
 ```
 
+La CI `azure-pipelines.yml` lance ces tests sur Ubuntu (Python 3.9 et 3.12), Windows et macOS (Python 3.12) à chaque push sur `main`. Pour la lancer sur les PR, ajoute ce pipeline comme **build validation** dans les policies de la branche `main` (Azure Repos ignore la clé `pr`).
+
 Couvert par les tests : décisions des hooks (payloads Local et Copilot), contrôle de review sur de vrais dépôts git temporaires, script d'onboarding (dont le squelette de la cartographie), cohérence des skills, des agents et des hooks.
 
 ## Points à vérifier au premier essai
