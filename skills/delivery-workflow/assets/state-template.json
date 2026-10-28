@@ -1,0 +1,11 @@
+{
+  "slug": "1234-short-kebab-title",
+  "phase": "challenge",
+  "path": "standard",
+  "base_branch": "main",
+  "branch": "ai/1234-short-kebab-title",
+  "work_item": null,
+  "pull_request": null,
+  "review_iterations": 0,
+  "language": "en"
+}

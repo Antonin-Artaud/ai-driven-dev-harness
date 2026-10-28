@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "type": "command",
+        "bash": "python3 \"${PLUGIN_ROOT}/scripts/hooks/pre_tool_use.py\"",
+        "powershell": "python \"${PLUGIN_ROOT}/scripts/hooks/pre_tool_use.py\"",
+        "timeoutSec": 15
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "bash": "python3 \"${PLUGIN_ROOT}/scripts/hooks/stop.py\"",
+        "powershell": "python \"${PLUGIN_ROOT}/scripts/hooks/stop.py\"",
+        "timeoutSec": 15
+      }
+    ]
+  }
+}

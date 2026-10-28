@@ -1,20 +1,132 @@
-# Introduction 
-TODO: Give a short introduction of your project. Let this section explain the objectives or the motivation behind this project. 
+# ai-delivery-workflow
 
-# Getting Started
-TODO: Guide users through getting your code up and running on their own system. In this section you can talk about:
-1.	Installation process
-2.	Software dependencies
-3.	Latest releases
-4.	API references
+Plugin d'agents (format [Agent Plugins 1.0](https://agent-plugins.org/)) pour VS Code et GitHub Copilot. Il transforme une demande (prompt, spec ou work item Azure DevOps) en **PR draft Azure Repos** relue. Le parcours passe par un challenge du besoin métier, un plan d'architecture, une implémentation qui suit le plan et une review indépendante fondée sur les skills du projet.
 
-# Build and Test
-TODO: Describe and show how to build your code and run the tests. 
+```
+challenger ─▶ architect ─▶ builder ─▶ PR draft ─▶ ta revue dans Azure DevOps ─▶ builder (retours) ─▶ tu publies
+ brief.md      plan.md      ├─ implementer (subagent, un lot à la fois)
+                            └─ reviewer (subagent indépendant, autre famille de modèles)
+```
 
-# Contribute
-TODO: Explain how other users and developers can contribute to make your code better. 
+Chaque passage entre agents interactifs est un **handoff** (`send: false`) : tu valides le brief ou le plan, puis tu cliques.
 
-If you want to learn more about creating good readme files then refer the following [guidelines](https://docs.microsoft.com/en-us/azure/devops/repos/git/create-a-readme?view=azure-devops). You can also seek inspiration from the below readme files:
-- [ASP.NET Core](https://github.com/aspnet/Home)
-- [Visual Studio Code](https://github.com/Microsoft/vscode)
-- [Chakra Core](https://github.com/Microsoft/ChakraCore)
+## Contenu
+
+| Élément | Rôle |
+|---|---|
+| `challenger` (agent) | Challenge le besoin, trie la demande (fast, standard, feature) et produit `brief.md` |
+| `architect` (agent) | Cartographie l'existant, compare des options, conteste ta vision et produit `plan.md` découpé en lots |
+| `builder` (agent) | Orchestre implementer et reviewer, pousse la branche, ouvre la PR draft et traite les commentaires de PR |
+| `implementer` (subagent caché) | Implémente un lot : tests, code, un commit |
+| `reviewer` (subagent caché) | Relit `merge-base..HEAD` en appliquant d'abord les skills du projet, puis écrit `review.md` |
+| `skills/` | `delivery-workflow`, `business-challenge`, `solution-design`, `plan-execution`, `code-review`, `pr-feedback`, `azure-devops`, `project-onboarding` |
+| `com.github.copilot/hooks/hooks.json` | Garde-fous déterministes `PreToolUse` et `Stop` (scripts Python, bibliothèque standard uniquement) |
+
+Les agents restent légers. Toute la méthode vit dans les skills, un format portable, et chaque projet garde la main grâce à ses propres skills : **les skills du projet passent avant ceux du plugin**.
+
+## Prérequis
+
+- VS Code avec GitHub Copilot, harness **Local** (pour les handoffs).
+- Python ≥ 3.9 dans le PATH : `python` sous Windows, `python3` sous Linux et macOS.
+- Git, un dépôt hébergé sur Azure Repos et une organisation Azure DevOps rattachée à Microsoft Entra ID (exigence du serveur MCP distant).
+
+## Installation
+
+Source : [Antonin-Artaud / ai-driven-dev-harness](https://github.com/Antonin-Artaud/ai-driven-dev-harness) (GitHub).
+
+**Option 1 (recommandée pendant la mise au point) : clone local.** Clone le dépôt, puis déclare-le dans les paramètres utilisateur de VS Code (`settings.json`). Une modification du plugin est alors prise en compte sans réinstallation.
+
+```powershell
+git clone "https://github.com/Antonin-Artaud/ai-driven-dev-harness.git" <dossier-des-plugins>\ai-delivery-workflow
+```
+
+```jsonc
+{
+  "chat.plugins.enabled": true,
+  "chat.pluginLocations": {
+    "<dossier-des-plugins>/ai-delivery-workflow": true
+  },
+  "chat.useHooks": true
+}
+```
+
+**Option 2 : installation depuis la source.** Lance **Chat: Install Plugin From Source** et colle l'URL du dépôt. VS Code clone le dépôt avec tes identifiants git Azure Repos.
+
+Dans les deux cas, le workspace doit être approuvé (*trusted*), sinon les hooks ne s'exécutent pas.
+
+## Onboarding d'un projet
+
+1. Ouvre le projet et lance le skill `/project-onboarding`.
+2. L'agent exécute `skills/project-onboarding/scripts/onboard.py`, d'abord en `--dry-run` :
+   - il déduit l'organisation, le projet et le repo du remote `origin` ;
+   - il crée ou complète `.vscode/mcp.json` avec `ado-read` (lecture seule) et `ado-write` (PR draft et commentaires uniquement) ;
+   - il ajoute `.ai/` à `.git/info/exclude`, sans toucher au `.gitignore` de l'équipe.
+3. Il rédige la section **AI delivery workflow** de `AGENTS.md` : commandes, branche de base, glossaire et correspondance optionnelle entre étapes et skills du projet. Il te demande validation avant d'écrire.
+4. Commite `AGENTS.md`, et `.vscode/mcp.json` s'il est suivi par git, sur la branche de base. Le builder exige un arbre de travail propre avant de créer sa branche `ai/<slug>`.
+5. Démarre `ado-read` et `ado-write` depuis la vue MCP (connexion Entra).
+
+## Utilisation
+
+1. Sélectionne l'agent **challenger** et donne ta demande, ou un ID ou une URL de work item.
+2. Réponds aux questions (5 maximum par tour, chacune avec une réponse par défaut) et valide `brief.md`. Clique ensuite sur **Design the solution**, ou sur **Fast path** pour un petit changement.
+3. L'**architect** propose des options, conteste ta vision et produit `plan.md`. Valide-le, puis clique sur **Implement the plan**.
+4. Le **builder** fait implémenter les lots et relire la branche (2 itérations de review au maximum, sinon il te passe la main). Il pousse la branche, puis crée la PR draft liée au work item ; tu confirmes chacune de ces deux actions.
+5. Relis la PR draft dans Azure DevOps et commente.
+6. De retour dans VS Code, clique sur **Address PR feedback**. Le builder classe les commentaires ; **tu valides ce classement**, puis il corrige, fait relire et répond à chaque fil.
+7. Publie la PR toi-même. Mets ensuite `phase` à `done` dans `.ai/<slug>/state.json`, ou demande-le au builder.
+
+## Garde-fous (hooks)
+
+Les hooks n'agissent que dans un dépôt où un workflow est actif (`.ai/current` présent, `phase` différent de `done`).
+
+| Règle | Comportement |
+|---|---|
+| Contrôle de review (`Stop`) | En phase `build` ou `feedback`, l'agent ne peut pas terminer son tour s'il reste des modifications non commitées, ou si `review.md` est absent, périmé (SHA ≠ HEAD) ou non `APPROVED`. Il peut s'arrêter en passant `phase` à `escalated`. Un seul blocage consécutif (`stop_hook_active`). |
+| Création de PR | `repo_pull_request_write` `create` exige `phase: build`, `isDraft: true`, un arbre propre, une review `APPROVED` du HEAD, le HEAD poussé sur `origin/<branch>`, la bonne source et la bonne cible, et une description de 4000 caractères maximum. Ensuite, **confirmation**. |
+| Actions réservées à toi | Auto-complete, contournement des policies, publication de la draft (`isDraft: false`), abandon, vote et changement de relecteurs sont refusés. |
+| Push | `git push` demande confirmation ; force push, suppression de branche et `--mirror` sont refusés. |
+| Écritures Azure DevOps | Seules la PR draft et les commentaires de PR sont autorisés. Les commentaires doivent commencer par `🤖`, puisqu'ils sont publiés sous ton identité. Les work items ne sont jamais modifiés. |
+| az CLI | Les écritures `az repos pr`, `az boards work-item` et `az devops invoke` sont refusées : Azure DevOps passe uniquement par le MCP. |
+
+## Fichiers de travail (`.ai/`, jamais commités)
+
+| Fichier | Contenu |
+|---|---|
+| `.ai/current` | Slug actif |
+| `.ai/<slug>/state.json` | Phase, parcours (fast, standard, feature), branches, work item, PR, itérations de review, langue |
+| `.ai/<slug>/brief.md` | Besoin validé |
+| `.ai/<slug>/plan.md` | Plan découpé en lots |
+| `.ai/<slug>/review.md` | Dernière review, avec dans l'en-tête `verdict`, `reviewed_sha`, `base_sha` et `iteration` |
+| `.ai/<slug>/pr-description.md` | Description de la PR draft |
+| `.ai/<slug>/feedback.md` | Classement des commentaires de PR |
+
+## Modèles
+
+| Agent | Modèle (avec repli) |
+|---|---|
+| challenger, architect | Claude Opus 5.5 (Claude Opus 5) |
+| builder, implementer | Claude Sonnet 5.5 (Claude Sonnet 5) |
+| reviewer | GPT-6.1 Sol (GPT-6 Astra) : autre famille que l'implementer, donc moins d'angles morts partagés |
+
+En Local, le champ `model` de l'en-tête d'un agent s'applique aux subagents. Pour les agents interactifs, c'est le `model` du handoff qui choisit le modèle au moment du passage, et le challenger utilise le modèle sélectionné dans le sélecteur. Les noms doivent correspondre exactement à ceux du sélecteur de modèles, au format `<nom> (copilot)`.
+
+## Portabilité vers le harness Copilot
+
+- Le champ `handoffs` est ignoré : il suffit de changer d'agent à la main ; les fichiers `.ai/` portent le contexte d'une étape à l'autre.
+- Les hooks sont déclarés avec des noms d'événements PascalCase et les clés `bash` et `powershell`, reconnues par les deux harnesses. Ils lisent les deux formats d'entrée (`tool_name`/`tool_input` et `toolName`/`toolArgs`) et écrivent leurs décisions dans les deux formats de sortie.
+- Aucun hook n'est déclaré dans l'en-tête des agents. Le harness Copilot ignore aujourd'hui ces hooks pour les agents fournis par un plugin ; ici, ils sont tous au niveau du plugin.
+
+## Tests
+
+```powershell
+cd tests
+python -m unittest
+```
+
+Couvert par les tests : décisions des hooks (payloads Local et Copilot), contrôle de review sur de vrais dépôts git temporaires, script d'onboarding, cohérence des skills, des agents et des hooks.
+
+## Points à vérifier au premier essai
+
+- La doc VS Code qualifie les hooks du harness Local de « legacy ». Ils fonctionnent, mais l'éditeur évolue vers le harness Copilot.
+- Ouvre l'Agent Debug Log pour vérifier les noms réels des outils (terminal, outils MCP `ado-*`). Les hooks reconnaissent les outils Azure DevOps à leur nom : `repo_pull_request_write`, `repo_pull_request_thread_write`, tout autre outil d'écriture (`*_write`, `repo_create_branch`, `wiki_upsert_page`, ajout ou liaison de pièces jointes de work item), quel que soit le préfixe du serveur. Ils analysent aussi comme commande shell tout paramètre `command`, y compris un `git` appelé par son chemin complet ou via `cmd /c`, `bash -c`, `pwsh -Command`.
+- Si un handoff ou un modèle n'est pas trouvé, ajuste le nom dans l'en-tête de l'agent.
