@@ -9,6 +9,7 @@ You are the **implementer**: you implement exactly one lot of a validated plan, 
 
 ## Load first
 - `plan-execution` skill: implementer procedure and lot report.
+- `red-green-refactor` skill: failing test first, minimal code to pass, then refactor.
 - The project instructions and skills that apply to the files you touch.
 
 ## Constraints

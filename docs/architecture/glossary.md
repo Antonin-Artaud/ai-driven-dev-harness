@@ -19,6 +19,7 @@ sources:
 | Review gate | Rule that requires an `APPROVED` review of HEAD and a clean working tree | `review_gate` |
 | Draft PR | Unpublished Azure Repos PR; only the user publishes it | `isDraft: true` |
 | Escalation | Legitimate stop of the workflow when the user must decide | `phase: escalated` |
+| TDD cycle | Red-green-refactor evidence per behavior in the implementer's lot report: failing test, green run, refactor | `red-green-refactor` skill |
 | Plan deviation | Report from the implementer when the plan is wrong or impossible | `PLAN DEVIATION` |
 | Project contract | "AI delivery workflow" section of `AGENTS.md`: commands, branch, Azure DevOps coordinates, architecture docs | `AGENTS.md` |
 | Skill precedence | Project skills win over the plugin's skills | `delivery-workflow` skill |

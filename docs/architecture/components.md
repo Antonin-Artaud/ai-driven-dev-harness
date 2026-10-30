@@ -17,8 +17,8 @@ The plugin modules, their responsibilities, and where new code goes.
 |---|---|---|---|---|---|
 | `challenger` | yes | Claude Opus | read, search, edit, todo, `ado-read/*` | delivery-workflow, business-challenge, azure-devops | `com.github.copilot/agents/challenger.agent.md` |
 | `architect` | yes | Claude Opus | read, search, edit, todo, web, `ado-read/*` | delivery-workflow, solution-design, architecture-mapping | `com.github.copilot/agents/architect.agent.md` |
-| `builder` | yes | Claude Sonnet | read, search, edit, execute, todo, agent, `ado-read/*`, `ado-write/*` | delivery-workflow, plan-execution, azure-devops, pr-feedback | `com.github.copilot/agents/builder.agent.md` |
-| `implementer` | no (subagent) | Claude Sonnet | read, search, edit, execute, todo | plan-execution | `com.github.copilot/agents/implementer.agent.md` |
+| `builder` | yes | Claude Sonnet | read, search, edit, execute, todo, agent, `ado-read/*`, `ado-write/*` | delivery-workflow, plan-execution, red-green-refactor, azure-devops, pr-feedback | `com.github.copilot/agents/builder.agent.md` |
+| `implementer` | no (subagent) | Claude Sonnet | read, search, edit, execute, todo | plan-execution, red-green-refactor | `com.github.copilot/agents/implementer.agent.md` |
 | `reviewer` | no (subagent) | GPT | read, search, edit, execute | code-review | `com.github.copilot/agents/reviewer.agent.md` |
 
 Only the builder has `ado-write` and can run subagents. Handoffs link challenger → architect or builder (fast path), architect → builder or challenger, and builder → builder (PR feedback).
@@ -42,6 +42,7 @@ flowchart LR
 | `business-challenge` | Challenge the need, Definition of Ready, `brief.md` | `skills/business-challenge/` |
 | `solution-design` | Options, ADR, checklists (security, performance, testing, reliability), `plan.md` in lots, documentation impact | `skills/solution-design/` |
 | `plan-execution` | Builder and implementer procedures, review loop bounded to 2 iterations | `skills/plan-execution/` |
+| `red-green-refactor` | Test-first discipline: failing test, minimal code, refactor; `TDD cycle` evidence in the lot report, checked by the builder | `skills/red-green-refactor/` |
 | `code-review` | Independent review of `merge-base..HEAD`, severities, `review.md` | `skills/code-review/` |
 | `pr-feedback` | Triage of PR comments (fix, discuss, decline), fixes, `🤖` replies | `skills/pr-feedback/` |
 | `azure-devops` | Use of the MCP servers: work item intake, draft PR creation, comments | `skills/azure-devops/` |
