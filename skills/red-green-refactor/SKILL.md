@@ -27,6 +27,7 @@ Keep the steps small: when a test needs a lot of code to pass, write a smaller t
 - **Deterministic and fast:** no real time, randomness, network or test order dependency without control.
 - **One lot, one commit** (see the `plan-execution` skill): the red, green and refactor steps happen in the working tree; the commit holds the tests and the code together. Do not commit a red suite.
 - **When test-first is not feasible** (pure configuration, generated code, documentation, a spike agreed in the plan, code without any test harness), say so in the lot report with the reason and the alternative check you ran. Missing test infrastructure the lot needs is a `PLAN DEVIATION`, not a reason to skip tests silently.
+- **Only the user waives the tests.** In the `build` and `feedback` phases, the `PreToolUse` hook asks the user to confirm any commit that changes code without a test file (`delivery-workflow` skill). Never rename files or split a commit to get around it. If the user denies the commit, write the failing test first; if the project has no test harness at all (a legacy project without unit or end-to-end tests), report a `PLAN DEVIATION` so that the user decides, once, between adding a harness and accepting lots without tests.
 
 ## Evidence in the lot report
 
@@ -42,6 +43,6 @@ TDD cycle:
 
 The builder does not code, so it applies this skill through the implementer:
 
-1. **Brief.** In every implementer prompt (lots and fix lots), require the red-green-refactor cycle of this skill and the `TDD cycle` entry, and list the acceptance criteria or findings each test must cover.
+1. **Brief.** In every implementer prompt (lots and fix lots), require the red-green-refactor cycle of this skill and the `TDD cycle` entry, and list the acceptance criteria or findings each test must cover. When the user has accepted lots without tests (legacy project without a test harness), say so in the prompt: the commit hook still asks the user for each such commit.
 2. **Check the report.** For each lot, every behavior has a red step that failed for the right reason, then a green run of the suite; every "not test-first" item has a credible reason. A missing or implausible red step (the test was written after the code, or failed only on an import error) sends the lot back to the implementer once with the gap named; if it recurs, record it as a deviation in the progress report.
 3. **Review.** Tell the reviewer that the lots followed this skill, so that missing tests for an acceptance criterion or a bug fix without a regression test are reported.

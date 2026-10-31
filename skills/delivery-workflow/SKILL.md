@@ -84,6 +84,7 @@ The plugin hooks only act in a repository with an active workflow (`.ai/current`
 
 - **Review gate (Stop):** in the `build` and `feedback` phases, the main agent cannot finish while there are uncommitted changes, or while `review.md` is missing, stale (`reviewed_sha` ≠ HEAD) or not `APPROVED`. Escalate (`phase: escalated`) to stop legitimately.
 - **Draft PR gate:** `repo_pull_request_write` `create` requires `phase: build`, `isDraft: true`, a clean tree, an `APPROVED` review of HEAD, HEAD pushed to `origin/<branch>`, the current branch as source, `base_branch` as target and a description of at most 4000 characters; then the user confirms. Autocomplete, policy bypass, publishing (`isDraft: false`), abandoning, voting and reviewer changes are denied.
+- **Test-first commit:** in the `build` and `feedback` phases, a `git commit` that changes code without any test file asks the user, who alone can accept a lot without tests (`red-green-refactor` skill).
 - **Push:** `git push` asks the user; force pushes, deletions and mirror pushes are denied.
 - **Azure DevOps writes:** only draft PR creation or update and PR comments are allowed; work items are never modified; workflow comments must start with `🤖`.
 - **az CLI:** `az repos pr` writes, `az boards work-item` writes and write calls through `az devops invoke` are denied. Azure DevOps is accessed through the MCP servers only.

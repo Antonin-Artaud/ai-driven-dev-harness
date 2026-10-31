@@ -22,7 +22,7 @@
 
 ### Domain
 - Glossary and domain documentation: `docs/architecture/glossary.md`
-- Key business rules: the hooks only act when a workflow is active; the user alone publishes, completes or abandons a PR; work items are never modified.
+- Key business rules: the hooks only act when a workflow is active; the user alone publishes, completes or abandons a PR, and accepts a code commit without tests; work items are never modified.
 
 ### Conventions
 - Commit messages: Conventional Commits (`feat:`, `ci:`, `docs:`)

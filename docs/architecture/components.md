@@ -1,6 +1,6 @@
 ---
 title: Components
-verified_on: 2026-10-30
+verified_on: 2026-10-31
 sources:
   - com.github.copilot/agents/
   - skills/
@@ -42,7 +42,7 @@ flowchart LR
 | `business-challenge` | Challenge the need, Definition of Ready, `brief.md` | `skills/business-challenge/` |
 | `solution-design` | Options, ADR, checklists (security, performance, testing, reliability), `plan.md` in lots, documentation impact | `skills/solution-design/` |
 | `plan-execution` | Builder and implementer procedures, review loop bounded to 2 iterations | `skills/plan-execution/` |
-| `red-green-refactor` | Test-first discipline: failing test, minimal code, refactor; `TDD cycle` evidence in the lot report, checked by the builder | `skills/red-green-refactor/` |
+| `red-green-refactor` | Test-first discipline: failing test, minimal code, refactor; `TDD cycle` evidence in the lot report, checked by the builder; a code commit without tests needs the user's approval (`PreToolUse`) | `skills/red-green-refactor/` |
 | `code-review` | Independent review of `merge-base..HEAD`, severities, `review.md` | `skills/code-review/` |
 | `pr-feedback` | Triage of PR comments (fix, discuss, decline), fixes, `🤖` replies | `skills/pr-feedback/` |
 | `azure-devops` | Use of the MCP servers: work item intake, draft PR creation, comments | `skills/azure-devops/` |
@@ -56,7 +56,7 @@ Precedence rule: the target project's skills win over the plugin's, and the plug
 | Module | Responsibility | Source |
 |---|---|---|
 | `workflow_gate.py` | Shared library: input parsing (VS Code Local and Copilot formats), active workflow loading, git calls, `review.md` front matter, review gate, output format | `scripts/hooks/workflow_gate.py` |
-| `pre_tool_use.py` | `PreToolUse` policy: parses shell commands (git, az, nested shell launchers) and Azure DevOps MCP tools | `scripts/hooks/pre_tool_use.py` |
+| `pre_tool_use.py` | `PreToolUse` policy: parses shell commands (git, az, nested shell launchers) and Azure DevOps MCP tools; test-first gate on commits (code without a test file asks the user) | `scripts/hooks/pre_tool_use.py` |
 | `stop.py` | Review gate when the agent stops in the `build` or `feedback` phase | `scripts/hooks/stop.py` |
 
 Allowed dependencies: `pre_tool_use.py` and `stop.py` import `workflow_gate.py`, and nothing outside the Python standard library (`README.md`, script imports).

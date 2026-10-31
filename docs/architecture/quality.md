@@ -1,6 +1,6 @@
 ---
 title: Quality
-verified_on: 2026-10-30
+verified_on: 2026-10-31
 sources:
   - scripts/hooks/
   - com.github.copilot/hooks/hooks.json
@@ -36,5 +36,5 @@ No logs or metrics: every denial carries the `[ai-delivery-workflow]` prefix and
 
 ## Tests and CI
 
-- `python -m unittest` in `tests/`: 63 tests on 2026-10-30 (hooks, onboarding, plugin structure).
+- `python -m unittest` in `tests/`: 69 tests on 2026-10-31 (hooks, onboarding, plugin structure).
 - Azure Pipelines runs the suite on Ubuntu (Python 3.9 and 3.12), Windows and macOS (Python 3.12) on every push to `main` (`azure-pipelines.yml`). Azure Repos ignores the pipeline's `pr` key, so the pipeline is set as a build validation policy on `main` to run on pull requests (confirmed by the project owner; the policy lives in Azure DevOps, not in the code).

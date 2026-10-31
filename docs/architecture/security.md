@@ -1,6 +1,6 @@
 ---
 title: Security
-verified_on: 2026-10-30
+verified_on: 2026-10-31
 sources:
   - scripts/hooks/
   - skills/azure-devops/
@@ -29,6 +29,7 @@ How the plugin limits what the agents can do with the user's identity.
 | Vote, reviewer changes | `deny` |
 | PR comments | `deny` unless the content starts with `🤖` |
 | Other Azure DevOps writes (work items, wiki, branches...) | `deny` |
+| `git commit` in phase `build` or `feedback` that changes code files without any test file | `ask`: only the user accepts a lot without tests (`evaluate_commit`) |
 | `git push` | `ask`; `deny` for force push, deletion, `--mirror`, `--prune`, `+` or `:` refspecs |
 | `az repos pr` writes, `az boards work-item` writes, `az devops invoke` with POST/PUT/PATCH/DELETE | `deny` |
 
@@ -58,3 +59,4 @@ Assumption: the hooks are enabled, which is the default setup of the plugin (`ch
   - a git alias: `git pf` configured as `push --force` is read as the `pf` subcommand and allowed;
   - a script: `./release.sh` that runs `git push --force` internally is allowed, because the hook never reads the script.
   The MCP server filters still apply to Azure DevOps writes; only git and az commands are concerned.
+- The test-first gate recognizes test and code files by their path and extension (`is_test_path`, `is_code_path`): it proves that a commit contains a test file, not that the test came first or is meaningful. The order and the quality of the tests stay with the builder's check of the `TDD cycle` and with the reviewer. When the same command line stages files (`git add ... && git commit`), the gate checks all uncommitted changes, which can include files outside the commit.

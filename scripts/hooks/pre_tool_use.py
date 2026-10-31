@@ -2,8 +2,9 @@
 """PreToolUse policy of the ai-delivery-workflow plugin.
 
 Acts only in a git repository with an active workflow (``.ai/current`` present and phase not
-``done``). It gates draft PR creation, asks before ``git push``, and denies force pushes, Azure
-DevOps writes other than draft PRs and AI-marked PR comments, and az CLI writes.
+``done``). It gates draft PR creation, asks before ``git push`` and before a build or feedback
+commit that changes code without any test file (red-green-refactor skill), and denies force
+pushes, Azure DevOps writes other than draft PRs and AI-marked PR comments, and az CLI writes.
 Prints one JSON object; ``{}`` means no decision (the normal permission flow applies).
 """
 
@@ -56,6 +57,23 @@ AZ_WORK_ITEM_WRITE_RE = re.compile(
 )
 AZ_INVOKE_WRITE_RE = re.compile(
     r"^az" + _AZ_GLOBAL_OPTIONS + r"\s+devops\s+invoke\b.*--http-method[=\s]+(?:post|put|patch|delete)\b", re.DOTALL
+)
+# git commit: test-first gate (red-green-refactor skill).
+COMMIT_GATED_PHASES = wg.STOP_GATED_PHASES
+COMMIT_OPTIONS_WITH_VALUE = frozenset(
+    {"-m", "-F", "-c", "-C", "-t", "--message", "--file", "--reuse-message", "--reedit-message",
+     "--template", "--author", "--date", "--cleanup", "--fixup", "--squash", "--trailer", "--pathspec-from-file"}
+)
+COMMIT_SHORT_FLAGS_WITH_VALUE = "mFcCt"
+GIT_STAGE_RE = re.compile(r"\bgit\b.*?\b(?:add|rm|mv|stage)\b", re.IGNORECASE | re.DOTALL)
+CODE_EXTENSIONS = frozenset(
+    {".py", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".vue", ".svelte", ".java", ".kt", ".kts", ".scala",
+     ".groovy", ".cs", ".fs", ".vb", ".go", ".rs", ".rb", ".php", ".swift", ".m", ".mm", ".c", ".cc", ".cpp",
+     ".cxx", ".h", ".hpp", ".dart", ".ex", ".exs", ".erl", ".clj", ".lua", ".r", ".sql", ".sh", ".ps1", ".psm1"}
+)
+TEST_DIRECTORIES = frozenset({"test", "tests", "__tests__", "spec", "specs", "e2e", "testing", "cypress", "playwright"})
+TEST_FILE_RE = re.compile(
+    r"(?:^test_|^conftest\.py$|_test\.[^.]+$|_spec\.[^.]+$|\.(?:test|spec|cy|e2e)\.[^.]+$|(?:Tests?|Spec|IT)\.[^.]+$)"
 )
 AZ_PR_READ_SUBCOMMANDS = frozenset({"list", "show", "checkout"})
 AZ_PR_READ_NESTED = frozenset({("policy", "list"), ("reviewer", "list"), ("work-item", "list")})
@@ -176,8 +194,89 @@ def push_violation(args: List[str]) -> Optional[str]:
     return None
 
 
-def evaluate_git(args: List[str], workflow: wg.Workflow) -> Decision:
+def is_test_path(path: str) -> bool:
+    parts = path.replace("\\", "/").split("/")
+    for part in parts[:-1]:
+        lowered = part.lower()
+        if lowered in TEST_DIRECTORIES or lowered.endswith((".tests", ".test", ".specs", ".integrationtests")):
+            return True
+    return bool(TEST_FILE_RE.search(parts[-1]))
+
+
+def is_code_path(path: str) -> bool:
+    return Path(path).suffix.lower() in CODE_EXTENSIONS and not is_test_path(path)
+
+
+def parse_commit_args(args: List[str]) -> Tuple[bool, bool, List[str]]:
+    """Return (all tracked changes, amend, pathspecs) of a ``git commit`` command."""
+    commit_all = amend = False
+    pathspecs: List[str] = []
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg == "--":
+            pathspecs.extend(args[index + 1:])
+            break
+        if arg in ("-a", "--all"):
+            commit_all = True
+        elif arg == "--amend":
+            amend = True
+        elif arg in COMMIT_OPTIONS_WITH_VALUE:
+            index += 1
+        elif re.fullmatch(r"-[A-Za-z]+", arg):
+            for position, flag in enumerate(arg[1:]):
+                if flag == "a":
+                    commit_all = True
+                if flag in COMMIT_SHORT_FLAGS_WITH_VALUE:
+                    if position == len(arg) - 2:
+                        index += 1
+                    break
+        elif not arg.startswith("-"):
+            pathspecs.append(arg)
+        index += 1
+    return commit_all, amend, pathspecs
+
+
+def commit_paths(args: List[str], workflow: wg.Workflow, stages: bool) -> Optional[List[str]]:
+    """Paths the commit will contain (a superset when files are staged by the same command), or None."""
+    root = workflow.root
+    commit_all, amend, pathspecs = parse_commit_args(args)
+    if stages or commit_all or pathspecs:
+        found = wg.dirty_paths(root)
+    else:
+        staged = wg.git(root, "diff", "--cached", "--name-only")
+        found = None if staged is None else staged.splitlines()
+    if found is None:
+        return None
+    paths = set(found)
+    if amend:
+        previous = wg.git(root, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD")
+        paths.update((previous or "").splitlines())
+    return sorted(path for path in paths if path)
+
+
+def evaluate_commit(args: List[str], workflow: wg.Workflow, stages: bool) -> Decision:
+    if workflow.phase not in COMMIT_GATED_PHASES:
+        return NO_DECISION
+    paths = commit_paths(args, workflow, stages)
+    if not paths or any(is_test_path(path) for path in paths):
+        return NO_DECISION
+    code = [path for path in paths if is_code_path(path)]
+    if not code:
+        return NO_DECISION
+    shown = ", ".join(code[:5]) + (f" and {len(code) - 5} more" if len(code) > 5 else "")
+    return (
+        "ask",
+        f"This commit changes code ({shown}) without any test file, against the red-green-refactor skill. "
+        "Allow it only if you accept this lot without tests (for example a legacy project with no test "
+        "harness); otherwise deny it and the implementer writes the failing test first.",
+    )
+
+
+def evaluate_git(args: List[str], workflow: wg.Workflow, stages: bool = False) -> Decision:
     subcommand, push_args = git_subcommand(args)
+    if subcommand == "commit":
+        return evaluate_commit(push_args, workflow, stages)
     if subcommand != "push":
         return NO_DECISION
     violation = push_violation(push_args)
@@ -209,7 +308,9 @@ def evaluate_az(args: List[str]) -> Decision:
     return NO_DECISION
 
 
-def evaluate_launcher(launcher: str, tokens: List[Token], workflow: wg.Workflow, depth: int) -> Decision:
+def evaluate_launcher(
+    launcher: str, tokens: List[Token], workflow: wg.Workflow, depth: int, stages: bool = False
+) -> Decision:
     """Evaluate the command run by a shell launcher (cmd /c, bash -c, pwsh -Command, iex ...)."""
     flag_prefixes = ("/",) if launcher == "cmd" else ("-",)
     index = 0
@@ -219,29 +320,30 @@ def evaluate_launcher(launcher: str, tokens: List[Token], workflow: wg.Workflow,
     if not rest:
         return NO_DECISION
     if len(rest) == 1 and rest[0].quoted:
-        return evaluate_command(rest[0].text, workflow, depth)
-    return evaluate_segment(rest, workflow, depth)
+        return evaluate_command(rest[0].text, workflow, depth, stages)
+    return evaluate_segment(rest, workflow, depth, stages)
 
 
-def evaluate_segment(tokens: List[Token], workflow: wg.Workflow, depth: int) -> Decision:
+def evaluate_segment(tokens: List[Token], workflow: wg.Workflow, depth: int, stages: bool = False) -> Decision:
     texts = [token.text for token in tokens]
     start = command_start(texts)
     if start >= len(texts):
         return NO_DECISION
     name = command_name(texts[start])
     if name == "git":
-        return evaluate_git(texts[start + 1:], workflow)
+        return evaluate_git(texts[start + 1:], workflow, stages)
     if name == "az":
         return evaluate_az(texts[start + 1:])
     if name in SHELL_LAUNCHERS and depth < MAX_NESTING:
-        return evaluate_launcher(name, tokens[start + 1:], workflow, depth + 1)
+        return evaluate_launcher(name, tokens[start + 1:], workflow, depth + 1, stages)
     return NO_DECISION
 
 
-def evaluate_command(command: str, workflow: wg.Workflow, depth: int = 0) -> Decision:
+def evaluate_command(command: str, workflow: wg.Workflow, depth: int = 0, stages: bool = False) -> Decision:
+    """``stages``: the command line also stages files, so a commit is checked against the working tree."""
     decision = NO_DECISION
     for segment in lex(command):
-        decision = most_restrictive(decision, evaluate_segment(segment, workflow, depth))
+        decision = most_restrictive(decision, evaluate_segment(segment, workflow, depth, stages))
     return decision
 
 
@@ -252,7 +354,7 @@ def evaluate_shell(command: str, hook: wg.HookInput) -> Decision:
     workflow = wg.load_workflow(hook.cwd)
     if workflow is None:
         return NO_DECISION
-    return evaluate_command(command, workflow)
+    return evaluate_command(command, workflow, stages=bool(GIT_STAGE_RE.search(command)))
 
 
 # --- Azure DevOps MCP tools -----------------------------------------------------------------

@@ -1,6 +1,6 @@
 ---
 title: Glossary
-verified_on: 2026-10-30
+verified_on: 2026-10-31
 sources:
   - skills/delivery-workflow/
   - README.md
@@ -20,6 +20,7 @@ sources:
 | Draft PR | Unpublished Azure Repos PR; only the user publishes it | `isDraft: true` |
 | Escalation | Legitimate stop of the workflow when the user must decide | `phase: escalated` |
 | TDD cycle | Red-green-refactor evidence per behavior in the implementer's lot report: failing test, green run, refactor | `red-green-refactor` skill |
+| Test-first gate | `PreToolUse` rule: a build or feedback commit that changes code without any test file asks the user | `evaluate_commit` |
 | Plan deviation | Report from the implementer when the plan is wrong or impossible | `PLAN DEVIATION` |
 | Project contract | "AI delivery workflow" section of `AGENTS.md`: commands, branch, Azure DevOps coordinates, architecture docs | `AGENTS.md` |
 | Skill precedence | Project skills win over the plugin's skills | `delivery-workflow` skill |
