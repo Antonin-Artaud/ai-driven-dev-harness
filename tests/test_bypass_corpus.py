@@ -121,6 +121,9 @@ ADO_TOOL_CASES = (
     ("mcp_ado-read_core_list_projects", {}, None),
     ("mcp_ado-read_repo_pull_request", {"action": "get"}, None),
     ("mcp_ado-read_advsec_alerts", {"action": "list"}, None),
+    ("mcp_ms-learn_microsoft_docs_search", {"query": "Span<T> usage"}, None),
+    ("mcp_ms-learn_microsoft_docs_fetch", {"url": "https://learn.microsoft.com/en-us/ef/core/querying/tracking"}, None),
+    ("ms-learn/microsoft_code_sample_search", {"query": "ArrayPool", "language": "csharp"}, None),
 )
 
 

@@ -2,6 +2,30 @@
 
 All notable changes of the `ai-delivery-workflow` plugin. Versions follow [semantic versioning](https://semver.org/); the version lives in `plugin.json`.
 
+## 0.4.0 — unreleased
+
+Depends on 0.3.0 (audit hardening). Design: [ADR 0007](docs/architecture/decisions/0007-specialist-agents.md).
+
+### Added
+- `ui-ux-designer` builder subagent and `ui-ux-design` skill: lots marked `Kind: ui` in the plan, design system first, WCAG 2.1 AA, every state, responsive, i18n, visual evidence.
+- `security-architect` and `performance-architect` agents (architect subagents, also user-invocable) with the `security-design` and `performance-design` skills; they write `security.md` and `performance.md` with `SEC-n` and `PERF-n` requirements per lot, integrated into `plan.md` by the architect when the brief's `Concerns` line or the change calls for them.
+- Brief template: `Concerns` line and UX intent; plan template: UX intent, specialists consulted, `Kind` and security/performance requirements per lot.
+- Review: the reviewer checks `SEC-n` and `PERF-n` with the plan's severity, and a UI section of the baseline checklist on UI lots.
+- `dotnet-performance` skill (.NET projects only, [ADR 0008](docs/architecture/decisions/0008-stack-specific-performance-skills.md)): Tier A defaults for all .NET code and Tier B hot-path techniques under a `PERF-n`, each rule with its pitfalls, version and Microsoft Learn source; BenchmarkDotNet evidence; `.NET performance` line in the lot report and section in the review checklist.
+- Onboarding adds the read-only Microsoft Learn MCP server (`ms-learn`, `https://learn.microsoft.com/api/mcp`) on .NET projects (or with `--dotnet`); the architect, performance-architect, implementer, ui-ux-designer and reviewer get its tools.
+- Hooks: markers and role rules for the three new subagents (designer has the implementer's rights; each specialist writes only its own file; other subagents may not write those files; no shell writes to them).
+
+### Changed
+- Security and performance checklists moved from `solution-design` to the new skills.
+
+## 0.3.1 — unreleased
+
+### Fixed (Windows)
+- Subagent markers whose file time is slightly ahead of `time.time()` (coarse Windows clock) were treated as stale, so the reviewer could be denied `review.md`; a 5 s clock skew is now tolerated (`marker_active`, heartbeat).
+- `state.json` edits on a file saved with CRLF line endings were not simulated when the edit used LF (exact replacement or patch), so legitimate edits were denied; matching now ignores the line ending.
+- Workflow paths are matched case-insensitively (`.AI\\Slug\\STATE.JSON`), as on Windows file systems.
+- Tests read `plugin.json` as UTF-8 explicitly; new `tests/test_windows_inputs.py` exercises Windows-style inputs on every OS.
+
 ## 0.3.0 — unreleased
 
 Hardening after the audit of 2026-11-13. Upgrade notes: see "Mise à jour" in `README.md`.

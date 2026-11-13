@@ -44,10 +44,21 @@ PR_DESCRIPTION_LIMIT = 4000
 LOG_PREFIX = "[ai-delivery-workflow]"
 REVIEWER_AGENT = "reviewer"
 IMPLEMENTER_AGENT = "implementer"
+UI_DESIGNER_AGENT = "ui-ux-designer"
+SECURITY_AGENT = "security-architect"
+PERFORMANCE_AGENT = "performance-architect"
+# Subagents of the workflow; each has a marker ``.<name>-active`` while it runs.
+SUBAGENTS = (REVIEWER_AGENT, IMPLEMENTER_AGENT, UI_DESIGNER_AGENT, SECURITY_AGENT, PERFORMANCE_AGENT)
+# Subagents with the implementer's rights (code, never .ai/).
+CODING_AGENTS = (IMPLEMENTER_AGENT, UI_DESIGNER_AGENT)
+# Design specialists: each writes only its own file under .ai/<slug>/.
+SPECIALIST_FILES = {SECURITY_AGENT: "security.md", PERFORMANCE_AGENT: "performance.md"}
 # Written by the SubagentStart hook while a subagent runs, removed by SubagentStop and Stop.
 REVIEWER_MARKER = ".reviewer-active"
 IMPLEMENTER_MARKER = ".implementer-active"
 MARKER_MAX_AGE = 3600.0
+# File times can be slightly ahead of time.time() (coarse system clock on Windows, network drives).
+CLOCK_SKEW = 5.0
 REVIEWER_MARKER_MAX_AGE = MARKER_MAX_AGE
 HOOK_STATE = ".hooks.json"
 LOG_FILE = "log.jsonl"
@@ -58,12 +69,12 @@ GIT_TIMEOUT = 4.0
 SLUG_RE = re.compile(r"^(?=.{1,40}$)[a-z0-9]+(?:-[a-z0-9]+)*$")
 _SLUG_RE = SLUG_RE
 RESERVED_SLUGS = frozenset({ARCHIVE_DIR})
-_NAME_RE = {name: re.compile(r"(?:^|[^a-z0-9])" + name + r"$") for name in (REVIEWER_AGENT, IMPLEMENTER_AGENT)}
+_NAME_RE = {name: re.compile(r"(?:^|[^a-z0-9])" + re.escape(name) + r"$") for name in SUBAGENTS}
 # Files under .ai/<any>/ that only the hooks write.
-HOOK_OWNED_FILES = frozenset({REVIEWER_MARKER, IMPLEMENTER_MARKER, HOOK_STATE, LOG_FILE})
+HOOK_OWNED_FILES = frozenset({*(f".{name}-active" for name in SUBAGENTS), HOOK_STATE, LOG_FILE})
 # review.md, state.json and the hook-owned files of any slug: never written from the shell.
 PROTECTED_PATH_RE = re.compile(
-    r"(?:^|[^a-z0-9._-])\.ai/(?:current(?![a-z0-9._-])|[a-z0-9][a-z0-9._-]*/(?:review\.md|state\.json|"
+    r"(?:^|[^a-z0-9._-])\.ai/(?:current(?![a-z0-9._-])|[a-z0-9][a-z0-9._-]*/(?:review\.md|state\.json|security\.md|performance\.md|"
     + "|".join(re.escape(name) for name in sorted(HOOK_OWNED_FILES))
     + r")(?![a-z0-9._-]))"
 )
@@ -102,6 +113,11 @@ class HookInput:
     @property
     def is_implementer(self) -> bool:
         return is_agent_name(self.agent, IMPLEMENTER_AGENT)
+
+    @property
+    def subagent(self) -> Optional[str]:
+        """The workflow subagent named by the payload (``agent_type``), if any."""
+        return subagent_name(self.agent)
 
 
 @dataclass
@@ -143,6 +159,19 @@ class Workflow:
     def implementer_marker(self) -> Path:
         return self.directory / IMPLEMENTER_MARKER
 
+    def marker(self, agent: str) -> Path:
+        return self.directory / f".{agent}-active"
+
+    def markers(self) -> List[Path]:
+        return [self.marker(agent) for agent in SUBAGENTS]
+
+    def running_subagent(self, candidates: Any = None) -> Optional[str]:
+        """The workflow subagent whose SubagentStart marker is fresh, among ``candidates``."""
+        for agent in candidates or SUBAGENTS:
+            if marker_active(self.marker(agent)):
+                return agent
+        return None
+
     def reviewer_running(self) -> bool:
         """True while the SubagentStart hook has recorded a running reviewer subagent."""
         return marker_active(self.reviewer_marker)
@@ -159,7 +188,7 @@ def marker_active(path: Path) -> bool:
         age = time.time() - path.stat().st_mtime
     except OSError:
         return False
-    return 0 <= age <= MARKER_MAX_AGE
+    return -CLOCK_SKEW <= age <= MARKER_MAX_AGE
 
 
 def read_input() -> HookInput:
@@ -200,6 +229,10 @@ def parse_input(payload: Dict[str, Any]) -> HookInput:
 def is_agent_name(name: str, agent: str) -> bool:
     """``agent``, possibly namespaced by the client (``ai-delivery-workflow:reviewer``)."""
     return bool(_NAME_RE[agent].search(name.strip().lower()))
+
+
+def subagent_name(name: str) -> Optional[str]:
+    return next((agent for agent in SUBAGENTS if is_agent_name(name, agent)), None)
 
 
 def is_reviewer_name(name: str) -> bool:
@@ -376,7 +409,7 @@ def touch_heartbeat(workflow: Workflow, hook_name: str, force: bool = False) -> 
     previous = workflow.hook_state().get("heartbeat")
     if not force and isinstance(previous, dict):
         last = previous.get("epoch")
-        if isinstance(last, (int, float)) and 0 <= now - last < HEARTBEAT_INTERVAL:
+        if isinstance(last, (int, float)) and -CLOCK_SKEW <= now - last < HEARTBEAT_INTERVAL:
             return
 
     def change(data: Dict[str, Any]) -> None:

@@ -38,7 +38,7 @@ def close(repo: Path, reason: str) -> Dict[str, Any]:
     workflow.directory.mkdir(parents=True, exist_ok=True)
     (workflow.directory / "state.json").write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
     wg.log_event(workflow, "close", "close_workflow.py", "done", reason)
-    for marker in (workflow.reviewer_marker, workflow.implementer_marker):
+    for marker in workflow.markers():
         marker.unlink(missing_ok=True)
     archive = root / wg.WORKFLOW_DIR / wg.ARCHIVE_DIR
     destination = archive / slug

@@ -19,10 +19,11 @@ The plugin has no database. Its state lives in files of the target project.
 | `.ai/current` | Slug of the active work | no (`.git/info/exclude`) | challenger, close step | `skills/delivery-workflow/SKILL.md` |
 | `.ai/<slug>/state.json` | Workflow state; every edit is checked by the hooks | no | the agent of the current stage | `skills/delivery-workflow/assets/state-template.json`, `scripts/hooks/state_policy.py` |
 | `.ai/<slug>/brief.md`, `plan.md`, `pr-description.md`, `feedback.md` | Artifacts of each stage | no | challenger, architect, builder | `skills/delivery-workflow/SKILL.md` |
+| `.ai/<slug>/security.md`, `performance.md` | Specialist analyses and their `SEC-n`, `PERF-n` requirements | no | security-architect, performance-architect | `skills/security-design/`, `skills/performance-design/` |
 | `.ai/<slug>/review.md` | Latest review; its front matter is read by the hooks | no | reviewer | `skills/code-review/SKILL.md` |
 | `.ai/<slug>/.hooks.json` | Heartbeat (time, plugin version), `user_prompt_at`, `written_at` and `validated_at` per artifact, `escalated_at`, `untracked_baseline`, `stop_blocks` | no | hooks only | `scripts/hooks/workflow_gate.py`, `state_policy.py`, `user_prompt.py`, `stop.py` |
 | `.ai/<slug>/log.jsonl` | One JSON line per hook decision: `at`, `hook`, `tool`, `decision`, `reason`, `head`, `phase` | no | hooks only (append-only) | `log_event` in `scripts/hooks/workflow_gate.py` |
-| `.ai/<slug>/.reviewer-active`, `.implementer-active` | Subagent markers | no | hooks only | `scripts/hooks/subagent.py` |
+| `.ai/<slug>/.<subagent>-active` | Subagent markers (reviewer, implementer, ui-ux-designer, security-architect, performance-architect) | no | hooks only | `scripts/hooks/subagent.py` |
 | `.ai/archive/<slug>/` | Closed workflows | no | close step | `scripts/close_workflow.py` |
 | `.vscode/mcp.json` | `ado-read` and `ado-write` declarations | excluded when created by the script and untracked | `onboard.py` | `skills/project-onboarding/scripts/onboard.py` |
 | `docs/architecture/` | Architecture map | yes | architecture-mapping, implementer | `skills/architecture-mapping/SKILL.md` |

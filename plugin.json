@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "ai-delivery-workflow",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Spec-to-draft-PR delivery workflow: business challenge, architecture plan, plan-driven implementation, independent code review based on project skills, and Azure Repos draft PR gates.",
   "repository": "https://github.com/Antonin-Artaud/ai-driven-dev-harness",
   "keywords": [

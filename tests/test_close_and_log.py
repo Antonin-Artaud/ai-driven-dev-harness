@@ -92,7 +92,9 @@ class LogAndHeartbeatTestCase(unittest.TestCase):
     def test_heartbeat_is_written_by_the_first_call(self) -> None:
         self.shell("git status")
         heartbeat = self.repo.hook_state()["heartbeat"]
-        self.assertEqual(heartbeat["version"], json.loads((PLUGIN_ROOT / "plugin.json").read_text())["version"])
+        self.assertEqual(
+            heartbeat["version"], json.loads((PLUGIN_ROOT / "plugin.json").read_text(encoding="utf-8"))["version"]
+        )
         self.assertIn("at", heartbeat)
 
     def test_web_tool_use_is_logged(self) -> None:

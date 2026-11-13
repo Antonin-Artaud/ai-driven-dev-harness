@@ -29,6 +29,15 @@ class SubagentHookTestCase(unittest.TestCase):
         self.assertEqual(self.run_event("stop", {"agentName": "implementer"}), {})
         self.assertFalse(implementer.exists())
 
+    def test_every_workflow_subagent_has_a_marker(self) -> None:
+        for name in ("ui-ux-designer", "security-architect", "performance-architect"):
+            with self.subTest(agent=name):
+                marker = self.marker.parent / f".{name}-active"
+                self.run_event("start", {"agentName": name})
+                self.assertTrue(marker.exists())
+                self.run_event("stop", {"agentName": name})
+                self.assertFalse(marker.exists())
+
     def test_other_subagents_leave_no_marker(self) -> None:
         self.assertEqual(self.run_event("start", {"agentName": "explore"}), {})
         self.assertEqual(sorted(path.name for path in self.marker.parent.glob(".*-active")), [])

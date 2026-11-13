@@ -242,6 +242,47 @@ class StatePolicyTestCase(unittest.TestCase):
                 self.repo.write_workflow(phase=phase)
                 self.assertEqual(self.evaluate("create_file", source)[0], expected)
 
+    def test_specialist_and_designer_roles(self) -> None:
+        self.repo.write_workflow(phase="design")
+        security = {"filePath": f".ai/{SLUG}/security.md", "content": "# Security\n"}
+        performance = {"filePath": f".ai/{SLUG}/performance.md", "content": "# Performance\n"}
+        plan = {"filePath": f".ai/{SLUG}/plan.md", "content": "# plan\n"}
+        source = {"filePath": "src/app.py", "content": "x = 1\n"}
+        as_security = {"agent_id": "a1", "agent_type": "security-architect"}
+        as_performance = {"agent_id": "a2", "agent_type": "ai-delivery-workflow:performance-architect"}
+        self.assertEqual(self.evaluate("create_file", security, **as_security)[0], None)
+        self.assertEqual(self.evaluate("create_file", performance, **as_performance)[0], None)
+        for args, who in (
+            (performance, as_security),
+            (security, as_performance),
+            (plan, as_security),
+            (source, as_security),
+        ):
+            with self.subTest(file=args["filePath"], agent=who["agent_type"]):
+                self.assertEqual(self.evaluate("create_file", args, **who)[0], "deny")
+        for agent in ("implementer", "ui-ux-designer", "reviewer"):
+            with self.subTest(agent=agent):
+                self.assertEqual(self.evaluate("create_file", security, agent_id="a3", agent_type=agent)[0], "deny")
+        self.assertEqual(self.evaluate("create_file", security)[0], None, "the main agent may be the specialist")
+        marker = self.repo.path / ".ai" / SLUG / ".security-architect-active"
+        marker.write_text("1\n", encoding="utf-8")
+        self.assertEqual(self.evaluate("create_file", plan)[0], "deny", "marker fallback")
+        self.assertEqual(self.evaluate("create_file", security)[0], None)
+        marker.unlink()
+        self.assertEqual(self.evaluate("run_in_terminal", {"command": f"echo x > .ai/{SLUG}/security.md"})[0], "deny")
+
+    def test_ui_designer_has_the_implementer_rights(self) -> None:
+        self.repo.write_workflow(phase="build")
+        source = {"filePath": "src/ui/button.tsx", "content": "export {}\n"}
+        plan = {"filePath": f".ai/{SLUG}/plan.md", "content": "# plan\n"}
+        who = {"agent_id": "a1", "agent_type": "ui-ux-designer"}
+        self.assertEqual(self.evaluate("create_file", source, **who)[0], None)
+        self.assertEqual(self.evaluate("create_file", plan, **who)[0], "deny")
+        marker = self.repo.path / ".ai" / SLUG / ".ui-ux-designer-active"
+        marker.write_text("1\n", encoding="utf-8")
+        self.assertEqual(self.evaluate("create_file", source)[0], None)
+        self.assertEqual(self.evaluate("create_file", plan)[0], "deny")
+
     def test_no_workflow_no_rule(self) -> None:
         self.assertEqual(self.evaluate("create_file", {"filePath": STATE, "content": "{}"})[0], None)
 
@@ -271,7 +312,8 @@ class EndToEndValidationTestCase(unittest.TestCase):
         hook_state = self.repo.hook_state()
         self.assertIn("brief.md", hook_state["written_at"])
         self.assertEqual(
-            hook_state["heartbeat"]["version"], json.loads((hook.wg.PLUGIN_ROOT / "plugin.json").read_text())["version"]
+            hook_state["heartbeat"]["version"],
+            json.loads((hook.wg.PLUGIN_ROOT / "plugin.json").read_text(encoding="utf-8"))["version"],
         )
         self.repo.set_hook_state(user_prompt_at=hook_state["written_at"]["brief.md"] - 1)
         self.assertEqual(self.pre_tool_use("create_file", update).get("permissionDecision"), "deny")

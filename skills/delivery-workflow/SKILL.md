@@ -1,6 +1,6 @@
 ---
 name: delivery-workflow
-description: 'Shared conventions of the ai-delivery-workflow agents (challenger, architect, builder, implementer, reviewer): .ai/ artifacts, state.json phases, triage paths, language rule, project contract, skill precedence and the hook gates (state transitions, review gate, draft PR gate, push rules). Use when acting as one of these agents, or when a workflow gate blocks an action.'
+description: 'Shared conventions of the ai-delivery-workflow agents (challenger, architect, security-architect, performance-architect, builder, implementer, ui-ux-designer, reviewer): .ai/ artifacts, state.json phases, triage paths, language rule, project contract, skill precedence and the hook gates (state transitions, review gate, draft PR gate, push rules). Use when acting as one of these agents, or when a workflow gate blocks an action.'
 user-invocable: false
 ---
 
@@ -10,8 +10,11 @@ The workflow turns a prompt, a spec or an Azure DevOps work item into a reviewed
 
 ```
 challenger ─▶ architect ─▶ builder ─▶ draft PR ─▶ user review in Azure DevOps ─▶ builder (PR feedback) ─▶ user publishes
- brief.md      plan.md      ├─ implementer subagent (one lot at a time)
-                            └─ reviewer subagent (independent, other model family)
+ brief.md      plan.md      ├─ implementer subagent (one code lot at a time)
+               │            ├─ ui-ux-designer subagent (one UI lot at a time)
+               │            └─ reviewer subagent (independent, other model family)
+               ├─ security-architect subagent (security.md, when the concern is flagged)
+               └─ performance-architect subagent (performance.md, when the concern is flagged)
 ```
 
 Interactive agents hand over with handoff buttons (`send: false`): the user validates the artifact, then sends the prefilled prompt.
@@ -26,10 +29,12 @@ All workflow files live under `.ai/` at the repository root. They are excluded f
 | `.ai/<slug>/state.json` | the agent of the current stage | Workflow state (below) |
 | `.ai/<slug>/brief.md` | challenger | Validated business need |
 | `.ai/<slug>/plan.md` | architect (builder on the fast path) | Implementation plan split into lots |
+| `.ai/<slug>/security.md` | security-architect | Threats, mitigations, `SEC-n` requirements per lot, residual risk |
+| `.ai/<slug>/performance.md` | performance-architect | Budgets, hot paths, measurement plan, `PERF-n` requirements per lot |
 | `.ai/<slug>/review.md` | reviewer | Latest review: verdict, reviewed commit, findings |
 | `.ai/<slug>/pr-description.md` | builder | Draft PR description (≤ 4000 characters) |
 | `.ai/<slug>/feedback.md` | builder | Triage of the PR comments and the learnings proposed |
-| `.ai/<slug>/.reviewer-active`, `.implementer-active` | hooks | Present while that subagent runs |
+| `.ai/<slug>/.<subagent>-active` | hooks | Present while that subagent runs (reviewer, implementer, ui-ux-designer, security-architect, performance-architect) |
 | `.ai/<slug>/.hooks.json` | hooks | Heartbeat, time of the user's last prompt, validation and escalation times, Stop block count |
 | `.ai/<slug>/log.jsonl` | hooks | Append-only log of the hook decisions |
 | `.ai/archive/<slug>/` | close step | Closed workflows, kept for the learnings of later PRs |

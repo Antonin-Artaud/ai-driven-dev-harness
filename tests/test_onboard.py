@@ -238,6 +238,39 @@ class OnboardScriptTestCase(unittest.TestCase):
         self.assertEqual(summary["azure_devops_server"]["collection"], "DefaultCollection")
         self.assertTrue(any("Azure DevOps Server" in warning for warning in summary["warnings"]))
 
+    def test_dotnet_project_gets_the_docs_server(self) -> None:
+        self.repo.write("src/App/App.csproj", "<Project />\n")
+        code, summary = self.run_onboard()
+        self.assertEqual(code, 0)
+        self.assertTrue(summary["dotnet"]["detected"])
+        servers = json.loads(self.mcp.read_text(encoding="utf-8"))["servers"]
+        self.assertEqual(servers["ms-learn"], {"type": "http", "url": "https://learn.microsoft.com/api/mcp"})
+        self.assertEqual(sorted(servers), ["ado-read", "ado-write", "ms-learn"])
+        code, again = self.run_onboard()
+        self.assertEqual(again["mcp_json"]["action"], "unchanged")
+
+    def test_dotnet_detection_markers(self) -> None:
+        for marker in ("App.sln", "App.slnx", "global.json", "lib/Lib.fsproj"):
+            with self.subTest(marker=marker):
+                repo = TempGitRepo(with_origin=False)
+                try:
+                    repo.write(marker, "{}\n")
+                    self.assertTrue(onboard.detect_dotnet(repo.path, False)["detected"])
+                finally:
+                    repo.cleanup()
+        self.assertFalse(onboard.detect_dotnet(self.repo.path, False)["detected"])
+        self.assertTrue(onboard.detect_dotnet(self.repo.path, True)["detected"], "--dotnet forces it")
+
+    def test_non_dotnet_project_has_no_docs_server(self) -> None:
+        self.run_onboard()
+        self.assertNotIn("ms-learn", json.loads(self.mcp.read_text(encoding="utf-8"))["servers"])
+
+    def test_docs_server_without_azure_devops(self) -> None:
+        self.repo.git("remote", "set-url", "origin", "https://github.com/contoso/acme-bank.git")
+        code, summary = self.run_onboard("--dotnet")
+        self.assertEqual(code, 0)
+        self.assertEqual(sorted(json.loads(self.mcp.read_text(encoding="utf-8"))["servers"]), ["ms-learn"])
+
     def test_not_a_git_repository(self) -> None:
         folder = self.repo.base / "plain"
         folder.mkdir()

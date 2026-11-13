@@ -23,6 +23,8 @@ Goal: make sure the team builds the right thing, for the right reason, with test
    - Name the riskiest assumption and how we would learn it is wrong.
    - Look for a simpler alternative, including doing nothing or a non-software fix, and say when it is better.
    - Surface edge cases, negative scenarios and non-functional expectations (volume, latency, security, privacy, compliance, accessibility).
+   - When users see the change, capture the UX intent (who, which task, key screens and states) without designing the screens.
+   - Record the `Concerns` line (security, performance, ui, or none): it tells the architect which specialists to consult.
 6. **Ask in rounds.** At most 5 questions per round, ordered by impact, each tagged **[blocking]** or **[non-blocking]** and each with your default answer ("If you don't answer, I'll assume …"). Stop asking as soon as the Definition of Ready is met.
 7. **Write `brief.md`** from the [brief template](./assets/brief-template.md): acceptance criteria in Given/When/Then, explicit out-of-scope items, assumptions and open questions. Keep it short: it is a contract, not an essay.
 8. **Get the brief validated.** Iterate until the user explicitly validates it in a message. Then, without editing `brief.md` again, set `brief_validated` (`{"at": "<now>", "head": "<HEAD sha>"}`) and `phase: design` in one edit (the hook checks that the user wrote after the last change of the brief), and point the user to the right handoff: **Design the solution**, or **Fast path: implement directly** when `path: fast`.

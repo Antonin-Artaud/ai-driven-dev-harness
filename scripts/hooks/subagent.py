@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """SubagentStart / SubagentStop hooks of the ai-delivery-workflow plugin.
 
-While the ``reviewer`` or the ``implementer`` subagent runs, ``.ai/<slug>/.reviewer-active`` or
-``.ai/<slug>/.implementer-active`` exists. The PreToolUse hook uses them when the harness does not
-send the agent type with each tool call: the reviewer marker lets ``review.md`` through, the
-implementer marker identifies the implementer's file writes. The event comes from the first
+While a workflow subagent (reviewer, implementer, ui-ux-designer, security-architect,
+performance-architect) runs, ``.ai/<slug>/.<name>-active`` exists. The PreToolUse hook uses these
+markers when the harness does not send the agent type with each tool call: the reviewer marker
+lets ``review.md`` through, the other markers identify who writes files. The event comes from the first
 argument (``start`` or ``stop``) because the Copilot camelCase payloads do not name it.
 Prints ``{}``: these hooks never block.
 """
@@ -22,11 +22,8 @@ import workflow_gate as wg  # noqa: E402
 
 
 def marker_for(workflow: wg.Workflow, agent: str) -> Optional[Path]:
-    if wg.is_agent_name(agent, wg.REVIEWER_AGENT):
-        return workflow.reviewer_marker
-    if wg.is_agent_name(agent, wg.IMPLEMENTER_AGENT):
-        return workflow.implementer_marker
-    return None
+    name = wg.subagent_name(agent)
+    return workflow.marker(name) if name else None
 
 
 def evaluate(event: str, hook: wg.HookInput) -> None:
