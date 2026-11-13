@@ -33,7 +33,8 @@ PATH_KEYS = ("filePath", "file_path", "path", "filepath", "file", "target_file",
 CONTENT_KEYS = ("content", "file_text", "fileText", "contents", "new_content")
 OLD_KEYS = ("oldString", "old_string", "old_str", "oldText")
 NEW_KEYS = ("newString", "new_string", "new_str", "newText")
-_AI_PATH_RE = re.compile(r"(?:^|/)\.ai/(.+)$")
+# Windows file systems are case-insensitive: .AI\Slug\STATE.JSON is .ai/slug/state.json.
+_AI_PATH_RE = re.compile(r"(?:^|/)\.ai/(.+)$", re.IGNORECASE)
 
 # Allowed phase transitions through file edits. ``done`` is reached only through the close step.
 TRANSITIONS: Dict[str, frozenset] = {
@@ -88,10 +89,18 @@ def _first_str(data: Dict[str, Any], keys: Tuple[str, ...]) -> Optional[str]:
     return None
 
 
+def _lf(text: str) -> str:
+    return text.replace("\r\n", "\n")
+
+
 def _replacement(old: str, new: str, replace_all: bool = False) -> Callable[[str], Optional[str]]:
     def apply(text: str) -> Optional[str]:
         if old not in text:
-            return None
+            # Editors match across line endings: a file saved with CRLF (Windows) and an edit with LF.
+            text, source, target = _lf(text), _lf(old), _lf(new)
+            if source not in text:
+                return None
+            return text.replace(source, target) if replace_all else text.replace(source, target, 1)
         return text.replace(old, new) if replace_all else text.replace(old, new, 1)
 
     return apply
@@ -151,6 +160,7 @@ def _hunks(lines: List[str]) -> Callable[[str], Optional[str]]:
         hunks.append((old, new))
 
     def apply(text: str) -> Optional[str]:
+        text = _lf(text)
         for before, after in hunks:
             source, target = "\n".join(before), "\n".join(after)
             if source not in text:
@@ -194,7 +204,7 @@ def strings_in(value: Any) -> List[str]:
 def ai_relative(path: str) -> Optional[str]:
     """``<slug>/state.json`` for any path inside a ``.ai/`` folder, else None."""
     match = _AI_PATH_RE.search(path.replace("\\", "/"))
-    return match.group(1).strip("/") if match else None
+    return match.group(1).strip("/").lower() if match else None
 
 
 # --- identity ----------------------------------------------------------------------------------

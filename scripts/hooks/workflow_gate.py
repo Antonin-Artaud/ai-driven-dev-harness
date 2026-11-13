@@ -48,6 +48,8 @@ IMPLEMENTER_AGENT = "implementer"
 REVIEWER_MARKER = ".reviewer-active"
 IMPLEMENTER_MARKER = ".implementer-active"
 MARKER_MAX_AGE = 3600.0
+# File times can be slightly ahead of time.time() (coarse system clock on Windows, network drives).
+CLOCK_SKEW = 5.0
 REVIEWER_MARKER_MAX_AGE = MARKER_MAX_AGE
 HOOK_STATE = ".hooks.json"
 LOG_FILE = "log.jsonl"
@@ -159,7 +161,7 @@ def marker_active(path: Path) -> bool:
         age = time.time() - path.stat().st_mtime
     except OSError:
         return False
-    return 0 <= age <= MARKER_MAX_AGE
+    return -CLOCK_SKEW <= age <= MARKER_MAX_AGE
 
 
 def read_input() -> HookInput:
@@ -376,7 +378,7 @@ def touch_heartbeat(workflow: Workflow, hook_name: str, force: bool = False) -> 
     previous = workflow.hook_state().get("heartbeat")
     if not force and isinstance(previous, dict):
         last = previous.get("epoch")
-        if isinstance(last, (int, float)) and 0 <= now - last < HEARTBEAT_INTERVAL:
+        if isinstance(last, (int, float)) and -CLOCK_SKEW <= now - last < HEARTBEAT_INTERVAL:
             return
 
     def change(data: Dict[str, Any]) -> None:

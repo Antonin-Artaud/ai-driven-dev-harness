@@ -271,7 +271,8 @@ class EndToEndValidationTestCase(unittest.TestCase):
         hook_state = self.repo.hook_state()
         self.assertIn("brief.md", hook_state["written_at"])
         self.assertEqual(
-            hook_state["heartbeat"]["version"], json.loads((hook.wg.PLUGIN_ROOT / "plugin.json").read_text())["version"]
+            hook_state["heartbeat"]["version"],
+            json.loads((hook.wg.PLUGIN_ROOT / "plugin.json").read_text(encoding="utf-8"))["version"],
         )
         self.repo.set_hook_state(user_prompt_at=hook_state["written_at"]["brief.md"] - 1)
         self.assertEqual(self.pre_tool_use("create_file", update).get("permissionDecision"), "deny")
