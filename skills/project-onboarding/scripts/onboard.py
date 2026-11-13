@@ -8,7 +8,12 @@
 * With ``--docs``: creates the architecture map skeleton (``docs/architecture/`` by default) without
   overwriting existing files; the architecture-mapping skill fills it.
 
-Prints a JSON summary on stdout and never prints credentials. Standard library only, Python >= 3.9.
+Prints a JSON summary on stdout and never prints credentials. Exit codes: 0 done, 1 error,
+3 ``ado-read``/``ado-write`` definitions conflict (rerun with ``--force``). Files are written in
+UTF-8 with LF line endings. Standard library only, Python >= 3.9.
+
+The server URL and the ``X-MCP-*`` headers follow the documentation of the remote Azure DevOps MCP
+server: https://learn.microsoft.com/en-us/azure/devops/mcp-server/remote-mcp-server (checked 2026-11-13).
 """
 
 from __future__ import annotations
@@ -24,6 +29,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import unquote, urlsplit, urlunsplit
 
 MCP_ENDPOINT = "https://mcp.dev.azure.com/{organization}"
+EXIT_ERROR = 1
+EXIT_CONFLICT = 3
 READ_SERVER = "ado-read"
 WRITE_SERVER = "ado-write"
 READ_TOOLSETS = "repos,wit,wiki"
@@ -58,11 +65,17 @@ _REMOTE_PATTERNS = (
 )
 
 
+# Azure DevOps Server (on-premises): https://<server>[/tfs]/<collection>/<project>/_git/<repo>
+_SERVER_PATTERN = re.compile(
+    r"^(?:https?|ssh)://(?:[^@/]+@)?(?P<server>[^/:]+)(?::\d+)?/(?:tfs/)?(?P<collection>[^/]+)/(?P<project>[^/]+)/_git/"
+    + _REPO,
+    re.I,
+)
+
+
 def git(cwd: Any, *args: str) -> Optional[str]:
     try:
-        proc = subprocess.run(
-            ["git", *args], cwd=str(cwd), stdin=subprocess.DEVNULL, capture_output=True, timeout=30
-        )
+        proc = subprocess.run(["git", *args], cwd=str(cwd), stdin=subprocess.DEVNULL, capture_output=True, timeout=30)
     except (OSError, subprocess.SubprocessError):
         return None
     if proc.returncode != 0:
@@ -84,6 +97,22 @@ def parse_ado_remote(url: str) -> Optional[Dict[str, str]]:
                 "repository": repository,
             }
     return None
+
+
+def parse_ado_server_remote(url: str) -> Optional[Dict[str, str]]:
+    """Return the server, collection, project and repository of an Azure DevOps Server remote URL."""
+    url = url.strip()
+    if parse_ado_remote(url):
+        return None
+    match = _SERVER_PATTERN.match(url)
+    if not match or match.group("server").lower().endswith(("dev.azure.com", "visualstudio.com")):
+        return None
+    return {
+        "server": match.group("server"),
+        "collection": unquote(match.group("collection")),
+        "project": unquote(match.group("project")),
+        "repository": unquote(match.group("repo")),
+    }
 
 
 def redact_remote(url: str) -> str:
@@ -171,8 +200,13 @@ def desired_servers(organization: str) -> Dict[str, Dict[str, Any]]:
     }
 
 
+def write_lf(path: Path, content: str) -> None:
+    """Write UTF-8 with LF line endings on every platform (Path.write_text uses the platform newline)."""
+    path.write_bytes(content.replace("\r\n", "\n").encode("utf-8"))
+
+
 def write_json(path: Path, data: Any) -> None:
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    write_lf(path, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
 
 
 def merge_mcp_config(root: Path, organization: str, dry_run: bool, force: bool) -> Dict[str, Any]:
@@ -236,18 +270,21 @@ def ensure_excluded(root: Path, entries: Sequence[str], dry_run: bool) -> Dict[s
     if not path.is_absolute():
         path = root / path
     try:
-        existing = path.read_text(encoding="utf-8").splitlines()
+        existing = path.read_bytes().decode("utf-8", errors="replace").splitlines()
     except OSError:
         existing = []
     present = {line.strip().lstrip("/").rstrip("/") for line in existing}
     missing = [entry for entry in entries if entry.lstrip("/").rstrip("/") not in present]
     if missing and not dry_run:
         path.parent.mkdir(parents=True, exist_ok=True)
-        content = "\n".join(existing)
-        if content:
-            content += "\n"
-        content += "# ai-delivery-workflow\n" + "\n".join(missing) + "\n"
-        path.write_text(content, encoding="utf-8")
+        content = "# ai-delivery-workflow\n" + "\n".join(missing) + "\n"
+        try:
+            original = path.read_bytes()
+        except OSError:
+            original = b""
+        # Keep the existing lines byte for byte (another encoding stays untouched), then append.
+        prefix = original if original.endswith(b"\n") or not original else original + b"\n"
+        path.write_bytes(prefix + content.encode("utf-8"))
     try:
         shown = path.resolve().relative_to(root.resolve()).as_posix()
     except ValueError:
@@ -284,7 +321,7 @@ def scaffold_docs(root: Path, relative: str, dry_run: bool) -> Dict[str, Any]:
         created.append(shown)
         if not dry_run:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content, encoding="utf-8")
+            write_lf(path, content)
     return {"path": relative, "action": "created" if created else "unchanged", "created": created, "existing": existing}
 
 
@@ -309,9 +346,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.docs or args.docs_path:
         docs_path = normalize_docs_path(args.docs_path or DOCS_DEFAULT)
         if docs_path is None:
-            print_json({"ok": False, "error": f"--docs-path '{args.docs_path}' must be a folder inside the repository."})
-            return 1
+            print_json(
+                {"ok": False, "error": f"--docs-path '{args.docs_path}' must be a folder inside the repository."}
+            )
+            return EXIT_ERROR
 
+    if not Path(args.repo).is_dir():
+        print_json({"ok": False, "error": f"--repo '{args.repo}' does not exist or is not a folder."})
+        return EXIT_ERROR
     root_text = git(Path(args.repo), "rev-parse", "--show-toplevel")
     if not root_text:
         print_json(
@@ -333,6 +375,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     exclude = [WORKFLOW_EXCLUDE]
     next_steps = []
+    summary["azure_devops_server"] = None
     if ado:
         mcp = merge_mcp_config(root, ado["organization"], args.dry_run, args.force)
         mcp["tracked"] = git(root, "ls-files", "--error-unmatch", MCP_CONFIG) is not None
@@ -345,6 +388,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
     else:
         summary["mcp_json"] = None
+        server = parse_ado_server_remote(remote) if remote else None
+        summary["azure_devops_server"] = server
+        if server:
+            summary["warnings"].append(
+                f"origin is an Azure DevOps Server (on-premises) remote ({server['server']}, collection "
+                f"'{server['collection']}'): the remote Azure DevOps MCP server is documented for Azure DevOps "
+                "Services (https://mcp.dev.azure.com/<organization>), so no MCP configuration was generated. "
+                "Work item intake and draft PR creation are manual; the hooks and the rest of the workflow still apply."
+            )
+    if not ado and not (remote and parse_ado_server_remote(remote)):
         summary["warnings"].append(
             "origin is not an Azure Repos remote: no MCP configuration was generated, so work item intake "
             "and draft PR creation are unavailable."
@@ -363,6 +416,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "Enable chat.useHooks and trust this workspace so the workflow gates run.",
     ]
     summary["next_steps"] = next_steps
+    conflicts = (summary.get("mcp_json") or {}).get("conflicts")
+    if conflicts:
+        summary["ok"] = False
+        summary["error"] = (
+            f"{', '.join(conflicts)} already defined differently in {MCP_CONFIG}: review them, then rerun with --force "
+            "to replace them."
+        )
+        print_json(summary)
+        return EXIT_CONFLICT
     print_json(summary)
     return 0
 

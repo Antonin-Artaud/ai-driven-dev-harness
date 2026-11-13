@@ -1,6 +1,6 @@
 # Brief — <title>
 
-- Work item: <#ID or none> · Path: <fast | standard | feature> · Status: <draft | validated>
+- Work item: <#ID or none> · Path: <fast | standard | feature>
 
 ## Problem
 <One or two sentences: the problem and who has it, without solution vocabulary.>

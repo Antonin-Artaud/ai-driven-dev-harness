@@ -1,6 +1,6 @@
 ---
 name: delivery-workflow
-description: 'Shared conventions of the ai-delivery-workflow agents (challenger, architect, builder, implementer, reviewer): .ai/ artifacts, state.json phases, triage paths, language rule, project contract, skill precedence and the hook gates (review gate, draft PR gate, push confirmation). Use when acting as one of these agents, or when a workflow gate blocks an action.'
+description: 'Shared conventions of the ai-delivery-workflow agents (challenger, architect, builder, implementer, reviewer): .ai/ artifacts, state.json phases, triage paths, language rule, project contract, skill precedence and the hook gates (state transitions, review gate, draft PR gate, push rules). Use when acting as one of these agents, or when a workflow gate blocks an action.'
 user-invocable: false
 ---
 
@@ -22,31 +22,69 @@ All workflow files live under `.ai/` at the repository root. They are excluded f
 
 | File | Written by | Purpose |
 |---|---|---|
-| `.ai/current` | challenger | One line: the slug of the active work |
-| `.ai/<slug>/state.json` | every agent | Workflow state (below) |
+| `.ai/current` | challenger, close step | One line: the slug of the active work |
+| `.ai/<slug>/state.json` | the agent of the current stage | Workflow state (below) |
 | `.ai/<slug>/brief.md` | challenger | Validated business need |
 | `.ai/<slug>/plan.md` | architect (builder on the fast path) | Implementation plan split into lots |
 | `.ai/<slug>/review.md` | reviewer | Latest review: verdict, reviewed commit, findings |
 | `.ai/<slug>/pr-description.md` | builder | Draft PR description (≤ 4000 characters) |
-| `.ai/<slug>/feedback.md` | builder | Triage of the PR comments |
+| `.ai/<slug>/feedback.md` | builder | Triage of the PR comments and the learnings proposed |
+| `.ai/<slug>/.reviewer-active`, `.implementer-active` | hooks | Present while that subagent runs |
+| `.ai/<slug>/.hooks.json` | hooks | Heartbeat, time of the user's last prompt, validation and escalation times, Stop block count |
+| `.ai/<slug>/log.jsonl` | hooks | Append-only log of the hook decisions |
+| `.ai/archive/<slug>/` | close step | Closed workflows, kept for the learnings of later PRs |
 
-Slug: kebab-case, at most 40 characters, prefixed with the work item ID when there is one (`1234-empty-borrowers-crash`). Start `state.json` from the [state template](./assets/state-template.json).
+No agent writes the hook-owned files. Since `.ai/` is not committed, the builder archives `brief.md` and `plan.md` on the draft PR as the **workflow record** thread (`azure-devops` skill).
+
+Slug: kebab-case (`a-z`, `0-9`, single hyphens), at most 40 characters, prefixed with the work item ID when there is one (`1234-empty-borrowers-crash`); `archive` is reserved. The hooks ignore a `.ai/current` that breaks this rule. Start `state.json` from the [state template](./assets/state-template.json).
 
 ## state.json
 
-| Field | Meaning |
-|---|---|
-| `slug` | Same value as `.ai/current` |
-| `phase` | `challenge` → `design` → `build` → `pr-open` ⇄ `feedback` → `done`; `escalated` when the user must decide |
-| `path` | Triage result: `fast`, `standard` or `feature` |
-| `base_branch` | Target branch of the PR (from the project contract) |
-| `branch` | Work branch: `ai/<slug>` |
-| `work_item` | Azure DevOps work item ID, or `null` |
-| `pull_request` | Draft PR ID once created, or `null` |
-| `review_iterations` | Reviewer runs in the current build or feedback cycle |
-| `language` | Language of the user's request (`fr`, `en`, ...) |
+Write it with the file edit tools only (a full write or an exact string replacement), never from the shell: the hooks simulate every edit and deny the ones that break the rules of [the gates](./references/gates.md).
 
-Set `phase` when you enter your stage. Set `escalated` whenever you stop for a decision you cannot make yourself, and explain why. The user, or the builder on request, sets `done` once the PR is completed or abandoned.
+| Field | Meaning | Set by |
+|---|---|---|
+| `slug` | Same value as `.ai/current`; never changes | challenger |
+| `phase` | Current stage (below) | the agent of the stage |
+| `path` | Triage result: `fast`, `standard` or `feature` | challenger |
+| `base_branch` | Target branch of the PR (from the project contract); fixed once the build starts | challenger |
+| `branch` | Always `ai/<slug>` | challenger |
+| `work_item` | Azure DevOps work item ID, or `null` | challenger |
+| `brief_validated` | `{"at": "<ISO date>", "head": "<HEAD sha>"}` once the user validated `brief.md` | challenger |
+| `plan_validated` | Same, once the user validated `plan.md` | architect (builder on the fast path) |
+| `lots_done` | Append-only list of `{"lot": <n>, "commit": "<sha>"}`, one per committed lot | builder |
+| `pull_request` | Draft PR ID once created, or `null`; set once | builder |
+| `record_thread` | ID of the workflow record thread on the draft PR, or `null`; set once | builder |
+| `review_iterations` | Reviewer runs in the current build or feedback cycle, 2 at most | builder, before each reviewer run |
+| `escalation` | `{"from": "<phase>", "reason": "..."}` while `escalated` | the agent that escalates |
+| `language` | Language of the user's request (`fr`, `en`, ...) | challenger |
+| `closed_at`, `closed_from`, `close_reason` | Written by the close step | close step |
+
+Set a validation only after the user explicitly validated the file in a message, and do not edit the file afterwards: the hooks compare the time of the user's last prompt with the time the file was written.
+
+### Phases
+
+```
+challenge ─▶ design ─▶ build ─▶ pr-open ─▶ triage ─▶ feedback ─▶ pr-open ─▶ (close) done
+                  any active phase ─▶ escalated ─▶ challenge | design | build | triage | feedback | pr-open
+```
+
+| Phase | Who sets it | Leaves when |
+|---|---|---|
+| `challenge` | challenger, at the start | the brief is validated → `design` |
+| `design` | challenger | the plan is validated → `build` (builder) |
+| `build` | builder | the draft PR exists and HEAD is approved → `pr-open` |
+| `pr-open` | builder | the user commented → `triage` (Address PR feedback) |
+| `triage` | builder | the user validated `feedback.md` → `feedback`; nothing to change → `pr-open` |
+| `feedback` | builder | the fixes are approved and pushed → `pr-open` |
+| `escalated` | any agent, with `escalation.from` and `escalation.reason` | the user decided: the agent the user addresses moves to the phase the user chose; entering `build` or `feedback` resets `review_iterations` to 0 |
+| `done` | the close step only | — |
+
+Escalate whenever you stop for a decision you cannot make yourself (review limit reached, plan deviation, a hook denial you cannot fix), explain why, and wait for the user's answer.
+
+### Close step
+
+Once the user completed or abandoned the PR (or abandons the workflow), close it with `python <plugin>/scripts/close_workflow.py --repo . --reason "<why>"` (`python3` on Linux and macOS; `<plugin>` is the folder two levels above this skill). The hook asks the user to confirm. The script sets `phase: done`, moves `.ai/<slug>/` to `.ai/archive/<slug>/` and removes `.ai/current`. Nobody edits `state.json` by hand to close a workflow.
 
 ## Triage paths
 
@@ -80,12 +118,6 @@ When a project skill and a plugin skill disagree, the project skill wins. List t
 
 ## Gates enforced by hooks
 
-The plugin hooks only act in a repository with an active workflow (`.ai/current` present, `phase` not `done`):
-
-- **Review gate (Stop):** in the `build` and `feedback` phases, the main agent cannot finish while there are uncommitted changes, or while `review.md` is missing, stale (`reviewed_sha` ≠ HEAD) or not `APPROVED`. Escalate (`phase: escalated`) to stop legitimately.
-- **Draft PR gate:** `repo_pull_request_write` `create` requires `phase: build`, `isDraft: true`, a clean tree, an `APPROVED` review of HEAD, HEAD pushed to `origin/<branch>`, the current branch as source, `base_branch` as target and a description of at most 4000 characters; then the user confirms. Autocomplete, policy bypass, publishing (`isDraft: false`), abandoning, voting and reviewer changes are denied.
-- **Push:** `git push` asks the user; force pushes, deletions and mirror pushes are denied.
-- **Azure DevOps writes:** only draft PR creation or update and PR comments are allowed; work items are never modified; workflow comments must start with `🤖`.
-- **az CLI:** `az repos pr` writes, `az boards work-item` writes and write calls through `az devops invoke` are denied. Azure DevOps is accessed through the MCP servers only.
+The hooks act only while a workflow is active (`.ai/current` present, `phase` not `done`). Their rules are listed once, in [the gates reference](./references/gates.md): protected files, phase transitions, roles, Stop gates, shell commands, Azure DevOps tools and the decision log. Read it when a hook denies or asks.
 
 A denial is not an obstacle to work around: read its reason, fix the precondition, or escalate to the user.

@@ -1,28 +1,43 @@
 ---
 name: plan-execution
-description: 'Execute a validated plan.md. Builder: orchestrate implementer and reviewer subagents lot by lot (adaptive: one subagent for a single lot, one per lot otherwise), run the bounded review loop, push and open the Azure Repos draft PR. Implementer: code one lot with tests, commit it and report deviations. Use when implementing a plan, delegating lots, fixing review findings or handling a plan deviation.'
+description: 'Stage 3 of the ai-delivery-workflow, for the builder and implementer agents: execute a validated .ai/<slug>/plan.md. Builder: check the hooks, orchestrate implementer and reviewer subagents lot by lot, run the bounded review loop, push and open the Azure Repos draft PR, resume an interrupted build. Implementer: code one lot with tests, commit it and report deviations. Use only within this delivery workflow, when acting as the builder or the implementer.'
+user-invocable: false
 ---
 
 # Plan execution
 
 ## Builder procedure
 
-1. **Preconditions.** Read `.ai/current`, `state.json`, `brief.md`, `plan.md` and the project contract. The plan must be validated by the user. On the `fast` path without a plan, write a single-lot `plan.md` from the plan template of the `solution-design` skill, then proceed (the user chose the fast path on a validated brief).
-2. **Branch.** The working tree must be clean (`git status --porcelain` empty; `.ai/` is excluded from git): otherwise stop and ask the user to commit or stash the unrelated changes. Then `git fetch origin` and `git switch -c ai/<slug> origin/<base_branch>` (or `git switch ai/<slug>` when it exists). Never work on the base branch. Record `branch`, set `phase: build` and `review_iterations: 0`.
+0. **Hooks running.** Read `.ai/<slug>/.hooks.json`. If it is missing, or its `heartbeat.at` is more than 10 minutes old, the hooks are not running (disabled hooks, untrusted workspace, Python missing): stop, tell the user, and do not start the build. The gates are what makes this workflow safe.
+1. **Preconditions.** Read `.ai/current`, `state.json`, `brief.md`, `plan.md` and the project contract. `brief_validated` must be set.
+   - On the `fast` path without a plan: write a single-lot `plan.md` from the plan template of the `solution-design` skill, **show it to the user and wait for their confirmation**, then set `plan_validated` (`{"at": "<now>", "head": "<HEAD sha>"}`).
+   - Otherwise `plan_validated` must be set; if not, send the user back to the architect.
+   - If `phase` is already `build`, `triage` or `feedback`, follow [Resume](#resume) instead.
+2. **Branch.** No tracked file may be modified (`git status --porcelain --untracked-files=no` empty; `.ai/` is excluded from git): otherwise stop and ask the user to commit or stash them. Untracked files that exist now are recorded by the hook and ignored by the review gate. Then `git fetch origin` and `git switch -c ai/<slug> origin/<base_branch>` (or `git switch ai/<slug>` when it exists). Never work on the base branch. Set `phase: build`, `review_iterations: 0` and `lots_done: []` in one edit: the hook checks both validations.
 3. **Delegate the lots** to the `implementer` subagent:
    - one lot in the plan: a single implementer run;
    - several lots: one implementer run per lot, sequentially, in plan order.
-   The subagent does not see this conversation. Give it the slug, the lot number, the paths of `brief.md` and `plan.md`, the build and test commands, the architecture docs folder, and every decision taken since the plan was written. After each lot, check the report: tests green, exactly one new commit, the documentation impact of the lot applied, deviations. Stop and escalate on any `PLAN DEVIATION` that changes the scope, the design or the acceptance criteria.
+   The subagent does not see this conversation. Give it the slug, the lot number, the paths of `brief.md` and `plan.md`, the build and test commands, the architecture docs folder, and every decision taken since the plan was written. After each lot, check the report: tests green, exactly one new commit, the documentation impact of the lot applied, deviations. Append `{"lot": <n>, "commit": "<sha>"}` to `lots_done`. Escalate on any `PLAN DEVIATION` that changes the scope, the design or the acceptance criteria.
 4. **Review loop.**
-   - Once all lots are committed, run the `reviewer` subagent on `<merge-base>..HEAD` and increment `review_iterations`.
+   - Once all lots are committed, increment `review_iterations` **first**, then run the `reviewer` subagent on `<merge-base>..HEAD`: the reviewer writes that number as `iteration`, and the hook rejects any other.
    - `APPROVED`: continue.
    - `CHANGES_REQUESTED`: send the blocker and major findings to an `implementer` run as a fix lot, then review again.
-   - After 2 reviews still requesting changes, stop: set `phase: escalated`, then summarize the open findings and the options for the user.
+   - After 2 reviews still requesting changes, stop: set `phase: escalated` with `escalation: {"from": "build", "reason": "<open findings>"}`, then summarize the open findings and the options for the user. The hooks refuse a third review in the same cycle.
 5. **Prepare the PR description** in `pr-description.md` following the `azure-devops` skill (at most 4000 characters).
-6. **Push:** `git push -u origin ai/<slug>`; the user confirms. Never force push.
-7. **Open the draft PR** with `repo_pull_request_write` (`create`, `isDraft: true`, `workItems` when `state.work_item` is set) as described in the `azure-devops` skill. Record `pull_request` and set `phase: pr-open`.
-8. **Post the minor findings** of `review.md` as PR comments starting with `🤖`, one thread per finding, anchored to the file and line when possible.
-9. **Report:** PR link, lots and commits, tests, review verdict and iterations, deviations, and the next steps for the user: review the draft in Azure DevOps, comment there, use the **Address PR feedback** handoff, and publish the PR once satisfied.
+6. **Push:** `git push -u origin ai/<slug>`; the user confirms. Never force push, never push another branch.
+7. **Open the draft PR** as described in the `azure-devops` skill (the single source for the PR creation rules). Record `pull_request` and set `phase: pr-open` in one edit.
+8. **Archive the brief and the plan** as the workflow record thread (`azure-devops` skill) and record its ID in `state.record_thread`. The Stop hook blocks the end of the turn until it is set.
+9. **Post the minor findings** of `review.md` as PR comments starting with `🤖`, one thread per finding, anchored to the file and line when possible.
+10. **Report:** PR link, lots and commits, tests, review verdict and iterations, deviations, and the next steps for the user: review the draft in Azure DevOps, comment there, use the **Address PR feedback** handoff, publish the PR once satisfied, then ask for the close step (`delivery-workflow` skill).
+
+### Resume
+
+When a conversation was lost or the user asks to continue, rebuild the context from the files, never from memory:
+
+1. Read `state.json`: `phase`, `lots_done`, `review_iterations`, `escalation`, `pull_request`, `record_thread`. Read the last lines of `.ai/<slug>/log.jsonl` for the last hook decisions.
+2. Check the branch (`git switch ai/<slug>`), `git status` and `git log --oneline <merge-base>..HEAD` against `lots_done`.
+3. Continue from the first step not done: the next lot after the last of `lots_done`; the review loop with the current `review_iterations` (escalate if it is already 2 and the last verdict requests changes); the push; the PR (only if `pull_request` is null); the record thread (only if `record_thread` is null).
+4. `escalated`: show `escalation.reason` to the user and wait for their decision before changing anything.
 
 ## Implementer procedure
 
@@ -31,7 +46,7 @@ description: 'Execute a validated plan.md. Builder: orchestrate implementer and 
 3. **Apply the documentation impact of your lot** (the `Documentation impact` section of `plan.md`), following the page rules of the `architecture-mapping` skill: sourced statements, Mermaid diagrams, `verified_on` set to today on each page you checked, new ADRs from its template. If the code you wrote changes an integration, a flow, a security rule, a data store or a component boundary that the plan did not list, update the page too and report it as a deviation.
 4. Run the build, lint and test commands of the project contract. Fix the failures your change causes; report pre-existing failures without fixing them.
 5. Commit once per lot, documentation included: stage the lot's files only and use the commit message of the plan (`<type>(<scope>): <summary>`). Do not mention work item IDs in commit messages and never use closing keywords.
-6. Never push, never write under `.ai/`, never rewrite shared history (`--amend` only on your own lot commit, no `rebase -i`, no `reset --hard`).
+6. Never push, never write under `.ai/` (the hooks deny it), never rewrite shared history (`--amend` only on your own lot commit, no `rebase -i`, no `reset --hard`, no `branch -D`, no `--no-verify`).
 7. **Plan deviation protocol:** if the plan is wrong, incomplete or impossible, stop and report `PLAN DEVIATION` with the evidence and the options. Small adjustments that change neither the scope, nor the design, nor the acceptance criteria (a helper name, an extra test) are allowed but must be listed.
 
 ### Lot report (returned to the builder)

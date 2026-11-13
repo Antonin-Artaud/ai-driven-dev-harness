@@ -1,0 +1,6 @@
+# Lint configuration (CI: azure-pipelines.yml). Standard library code, Python >= 3.9.
+target-version = "py39"
+line-length = 120
+
+[lint]
+select = ["E", "F", "W", "B"]

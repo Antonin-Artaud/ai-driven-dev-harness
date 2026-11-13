@@ -18,6 +18,9 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 HOOKS_DIR = PLUGIN_ROOT / "scripts" / "hooks"
 PRE_TOOL_USE = HOOKS_DIR / "pre_tool_use.py"
 STOP = HOOKS_DIR / "stop.py"
+SUBAGENT = HOOKS_DIR / "subagent.py"
+USER_PROMPT = HOOKS_DIR / "user_prompt.py"
+CLOSE_WORKFLOW = PLUGIN_ROOT / "scripts" / "close_workflow.py"
 ONBOARD = PLUGIN_ROOT / "skills" / "project-onboarding" / "scripts" / "onboard.py"
 SLUG = "1234-demo"
 BRANCH = f"ai/{SLUG}"
@@ -116,6 +119,7 @@ class TempGitRepo:
         review: Optional[Dict[str, str]] = None,
         base_branch: Optional[str] = "main",
         exclude: bool = True,
+        **state_overrides: Any,
     ) -> Path:
         directory = self.path / ".ai" / SLUG
         directory.mkdir(parents=True, exist_ok=True)
@@ -132,6 +136,7 @@ class TempGitRepo:
         }
         if base_branch:
             state["base_branch"] = base_branch
+        state.update(state_overrides)
         (directory / "state.json").write_text(json.dumps(state, indent=2), encoding="utf-8")
         review_file = directory / "review.md"
         if review is None:
@@ -145,14 +150,35 @@ class TempGitRepo:
             self.exclude(".ai/")
         return directory
 
+    def hook_state(self) -> Dict[str, Any]:
+        path = self.path / ".ai" / SLUG / ".hooks.json"
+        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+    def set_hook_state(self, **values: Any) -> None:
+        path = self.path / ".ai" / SLUG / ".hooks.json"
+        data = self.hook_state()
+        data.update(values)
+        path.write_text(json.dumps(data), encoding="utf-8")
+
+    def state(self) -> Dict[str, Any]:
+        return json.loads((self.path / ".ai" / SLUG / "state.json").read_text(encoding="utf-8"))
+
+    def log_entries(self) -> List[Dict[str, Any]]:
+        path = self.path / ".ai" / SLUG / "log.jsonl"
+        if not path.exists():
+            return []
+        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
     def cleanup(self) -> None:
         remove_tree(self.base)
 
 
-def run_script(script: Path, payload: Any, env: Dict[str, str], cwd: Optional[Path] = None) -> Dict[str, Any]:
+def run_script(
+    script: Path, payload: Any, env: Dict[str, str], cwd: Optional[Path] = None, args: Optional[List[str]] = None
+) -> Dict[str, Any]:
     data = payload if isinstance(payload, (bytes, str)) else json.dumps(payload)
     proc = subprocess.run(
-        [sys.executable, str(script)],
+        [sys.executable, str(script), *(args or [])],
         input=data.encode("utf-8") if isinstance(data, str) else data,
         capture_output=True,
         env=env,

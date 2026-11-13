@@ -1,6 +1,6 @@
 ---
 title: Architecture map
-verified_on: 2026-10-30
+verified_on: 2026-11-13
 sources: []
 ---
 # Architecture map
@@ -19,11 +19,14 @@ Short, sourced map of the `ai-delivery-workflow` plugin. Every statement cites t
 | [Security](./security.md) | Identity, hook gates, trust boundaries |
 | [Quality](./quality.md) | Limits, hook reliability, tests and CI |
 | [Glossary](./glossary.md) | Workflow terms |
-| [Decisions](./decisions/) | ADRs (none yet) |
+| [Decisions](./decisions/) | ADRs 0001–0006 |
 
 ## To confirm
 
-None.
+- The host sends `UserPromptSubmit` to plugin hooks, and `agent_type` or `agentName` for subagents ([Security](./security.md#known-gaps)).
+- VS Code expands `${PLUGIN_ROOT}` in the hook commands of an agent plugin (`com.github.copilot/hooks/hooks.json`); the CI smoke test only checks the commands with the variable set.
+- The display name of the reviewer's Gemini fallback model (`com.github.copilot/agents/reviewer.agent.md`).
+- Whether the remote Azure DevOps MCP server can serve Azure DevOps Server (on-premises) ([Security](./security.md#known-gaps)).
 
 ## How to update
 

@@ -33,6 +33,23 @@ class RemoteParsingTestCase(unittest.TestCase):
             {"organization": "contoso", "project": "acme-bank", "repository": "acme-bank"},
         )
 
+    def test_azure_devops_server_urls(self) -> None:
+        expected = {
+            "server": "tfs.contoso.local",
+            "collection": "DefaultCollection",
+            "project": "Credit",
+            "repository": "acme-bank",
+        }
+        for url in (
+            "https://tfs.contoso.local/tfs/DefaultCollection/Credit/_git/acme-bank",
+            "https://tfs.contoso.local/DefaultCollection/Credit/_git/acme-bank",
+            "ssh://tfs.contoso.local:22/tfs/DefaultCollection/Credit/_git/acme-bank",
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(onboard.parse_ado_server_remote(url), expected)
+        self.assertIsNone(onboard.parse_ado_server_remote("https://dev.azure.com/contoso/Credit/_git/acme-bank"))
+        self.assertIsNone(onboard.parse_ado_server_remote("https://github.com/contoso/acme-bank.git"))
+
     def test_non_azure_remotes_are_ignored(self) -> None:
         for url in ("https://github.com/contoso/acme-bank.git", "git@github.com:contoso/acme-bank.git", ""):
             with self.subTest(url=url):
@@ -121,12 +138,15 @@ class OnboardScriptTestCase(unittest.TestCase):
         servers = {"servers": {"ado-read": {"type": "http", "url": "https://mcp.dev.azure.com/other"}}}
         self.repo.write(".vscode/mcp.json", json.dumps(servers))
         code, summary = self.run_onboard()
+        self.assertEqual((code, summary["ok"]), (onboard.EXIT_CONFLICT, False))
         self.assertEqual(summary["mcp_json"]["action"], "merged")
         self.assertEqual(summary["mcp_json"]["conflicts"], ["ado-read"])
         self.assertEqual(summary["mcp_json"]["added"], ["ado-write"])
         code, summary = self.run_onboard()
+        self.assertEqual((code, summary["ok"]), (onboard.EXIT_CONFLICT, False))
         self.assertEqual(summary["mcp_json"]["action"], "conflict")
         code, summary = self.run_onboard("--force")
+        self.assertEqual((code, summary["ok"]), (0, True))
         self.assertEqual(summary["mcp_json"]["action"], "merged")
         self.assertEqual(summary["mcp_json"]["replaced"], ["ado-read"])
         url = json.loads(self.mcp.read_text(encoding="utf-8"))["servers"]["ado-read"]["url"]
@@ -186,6 +206,37 @@ class OnboardScriptTestCase(unittest.TestCase):
         code, summary = self.run_onboard()
         self.assertIsNone(summary["architecture_docs"])
         self.assertFalse((self.repo.path / "docs").exists())
+
+    def test_exclude_file_in_another_encoding(self) -> None:
+        exclude = self.repo.path / ".git" / "info" / "exclude"
+        exclude.write_bytes(b"# caf\xe9 notes\r\n*.log\r\n")
+        code, summary = self.run_onboard()
+        self.assertEqual(code, 0)
+        self.assertEqual(summary["git_exclude"]["added"], [".ai/", ".vscode/mcp.json"])
+        data = exclude.read_bytes()
+        self.assertIn(b"\n.ai/\n", data)
+        self.assertIn(b"*.log", data)
+
+    def test_written_files_use_lf(self) -> None:
+        self.run_onboard("--docs")
+        for path in (self.mcp, self.repo.path / "docs" / "architecture" / "README.md"):
+            with self.subTest(path=path.name):
+                self.assertNotIn(b"\r\n", path.read_bytes())
+
+    def test_missing_repo_folder(self) -> None:
+        code, summary = self.run_onboard(cwd=self.repo.base / "nope")
+        self.assertEqual(code, 1)
+        self.assertIn("does not exist", summary["error"])
+
+    def test_azure_devops_server_is_reported(self) -> None:
+        self.repo.git(
+            "remote", "set-url", "origin", "https://tfs.contoso.local/tfs/DefaultCollection/Credit/_git/acme-bank"
+        )
+        code, summary = self.run_onboard()
+        self.assertEqual(code, 0)
+        self.assertIsNone(summary["mcp_json"])
+        self.assertEqual(summary["azure_devops_server"]["collection"], "DefaultCollection")
+        self.assertTrue(any("Azure DevOps Server" in warning for warning in summary["warnings"]))
 
     def test_not_a_git_repository(self) -> None:
         folder = self.repo.base / "plain"

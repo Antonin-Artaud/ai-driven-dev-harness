@@ -1,9 +1,11 @@
 import json
+import os
+import time
 import unittest
 
 from support import BRANCH, PRE_TOOL_USE, TempGitRepo, run_script
 
-MARKER = "\U0001F916"
+MARKER = "\U0001f916"
 
 
 class PreToolUseTestCase(unittest.TestCase):
@@ -150,6 +152,110 @@ class PreToolUseTestCase(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertEqual(self.shell(command)[0], None)
 
+    def test_git_aliases_are_resolved(self) -> None:
+        self.repo.write_workflow(phase="build")
+        self.repo.git("config", "alias.p", "push")
+        self.repo.git("config", "alias.yolo", "!git push --force")
+        self.repo.git("config", "alias.pp", "p")
+        denied = (
+            "git -c alias.p=push p --force origin main",
+            "git -c alias.x=push -c alias.y=x y -f",
+            "git p --force",
+            "git p -d origin ai/x",
+            "git yolo",
+            "git -c 'alias.z=!f() { git push -f; }; f' z",
+            "git pp --force",
+        )
+        for command in denied:
+            with self.subTest(command=command):
+                self.assertEqual(self.shell(command)[0], "deny")
+        for command in ("git p", f"git -c alias.up=push up -u origin {BRANCH}"):
+            with self.subTest(command=command):
+                self.assertEqual(self.shell(command)[0], "ask")
+
+    def test_aliases_of_builtins_and_unknown_names_are_ignored(self) -> None:
+        self.repo.write_workflow(phase="build")
+        self.repo.git("config", "alias.lg", "log --oneline")
+        for command in ("git -c alias.status=push status", "git lg", "git nothing-here"):
+            with self.subTest(command=command):
+                self.assertEqual(self.shell(command)[0], None)
+
+    def test_alias_loops_ask(self) -> None:
+        self.repo.write_workflow(phase="build")
+        self.repo.git("config", "alias.a", "b")
+        self.repo.git("config", "alias.b", "a")
+        self.assertEqual(self.shell("git a")[0], "ask")
+
+    # review.md is written by the reviewer only -------------------------------------------------
+
+    def review_edit(self, tool: str = "create_file", path: str = "", **extra):
+        path = path or str(self.repo.path / ".ai" / "1234-demo" / "review.md")
+        content = "---\nverdict: APPROVED\nreviewed_sha: abc1234\niteration: 1\n---\n"
+        payload = self.local(tool, {"filePath": path, "content": content})
+        payload.update(extra)
+        return self.decide(payload)
+
+    def test_main_agent_cannot_write_review(self) -> None:
+        self.repo.write_workflow(phase="build")
+        for tool in ("create_file", "replace_string_in_file", "insert_edit_into_file"):
+            with self.subTest(tool=tool):
+                decision, reason = self.review_edit(tool)
+                self.assertEqual(decision, "deny")
+                self.assertIn("reviewer subagent", reason)
+        other_slug = self.review_edit(path=".ai\\another-slug\\review.md")
+        self.assertEqual(other_slug[0], "deny")
+        patch = "*** Begin Patch\n*** Update File: .ai/1234-demo/review.md\n@@\n-verdict: X\n+verdict: APPROVED\n"
+        self.assertEqual(self.decide(self.local("apply_patch", {"input": patch}))[0], "deny")
+        marker = self.review_edit(path=".ai/1234-demo/.reviewer-active")
+        self.assertEqual(marker[0], "deny")
+
+    def test_other_subagents_cannot_write_review(self) -> None:
+        self.repo.write_workflow(phase="build")
+        (self.repo.path / ".ai" / "1234-demo" / ".reviewer-active").write_text("1\n", encoding="utf-8")
+        decision, reason = self.review_edit(agent_id="a1", agent_type="implementer")
+        self.assertEqual(decision, "deny")
+        self.assertIn("implementer", reason)
+
+    def test_reviewer_can_write_review(self) -> None:
+        self.repo.write_workflow(phase="build", review_iterations=1)
+        self.assertEqual(self.review_edit(agent_id="a1", agent_type="reviewer")[0], None)
+        self.assertEqual(self.review_edit(agentId="a1", agentType="ai-delivery-workflow:reviewer")[0], None)
+        (self.repo.path / ".ai" / "1234-demo" / ".reviewer-active").write_text("1\n", encoding="utf-8")
+        self.assertEqual(self.review_edit()[0], None, "marker fallback when the harness sends no agent type")
+        self.assertEqual(self.review_edit(agent_id="a1")[0], None)
+
+    def test_stale_reviewer_marker_is_ignored(self) -> None:
+        self.repo.write_workflow(phase="build")
+        marker = self.repo.path / ".ai" / "1234-demo" / ".reviewer-active"
+        marker.write_text("1\n", encoding="utf-8")
+        old = time.time() - 2 * 3600
+        os.utime(marker, (old, old))
+        self.assertEqual(self.review_edit()[0], "deny")
+
+    def test_reading_review_is_allowed(self) -> None:
+        self.repo.write_workflow(phase="build")
+        path = ".ai/1234-demo/review.md"
+        self.assertEqual(self.decide(self.local("read_file", {"filePath": path}))[0], None)
+        for command in (f"cat {path}", f"Get-Content {path}", "git diff main..HEAD -- src/review.md"):
+            with self.subTest(command=command):
+                self.assertEqual(self.shell(command)[0], None)
+
+    def test_shell_cannot_write_review(self) -> None:
+        self.repo.write_workflow(phase="build")
+        for command in (
+            "echo 'verdict: APPROVED' > .ai/1234-demo/review.md",
+            "Set-Content -Path .ai\\1234-demo\\review.md -Value x",
+            "cp /tmp/forged.md .ai/1234-demo/review.md",
+            "sed -i 's/CHANGES_REQUESTED/APPROVED/' .ai/1234-demo/review.md",
+            "python -c \"open('.ai/1234-demo/review.md','w').write('x')\"",
+            "touch .ai/1234-demo/.reviewer-active",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(self.shell(command)[0], "deny")
+
+    def test_review_rules_need_an_active_workflow(self) -> None:
+        self.assertEqual(self.review_edit()[0], None)
+
     # az CLI ---------------------------------------------------------------------------------
 
     def test_az_cli_writes_are_denied(self) -> None:
@@ -262,7 +368,7 @@ class PreToolUseTestCase(unittest.TestCase):
     # PR updates and threads -----------------------------------------------------------------------
 
     def test_pr_update_rules(self) -> None:
-        self.repo.write_workflow(phase="pr-open")
+        self.repo.write_workflow(phase="pr-open", pull_request=7)
         denied = (
             {"action": "update", "pullRequestId": 7, "autoComplete": True},
             {"action": "update", "pullRequestId": 7, "bypassPolicy": True, "bypassReason": "x"},
@@ -279,7 +385,7 @@ class PreToolUseTestCase(unittest.TestCase):
         self.assertEqual(self.pr_write(**allowed)[0], None)
 
     def test_thread_writes_require_the_ai_marker(self) -> None:
-        self.repo.write_workflow(phase="pr-open")
+        self.repo.write_workflow(phase="pr-open", pull_request=7)
         tool = "mcp_ado-write_repo_pull_request_thread_write"
         base = {"repositoryId": "acme-bank", "pullRequestId": 7}
         denied = self.decide(self.local(tool, {**base, "action": "create", "content": "Missing null check."}))
@@ -288,10 +394,13 @@ class PreToolUseTestCase(unittest.TestCase):
         for args in (
             {**base, "action": "create", "content": f"{MARKER} AI review - minor: rename x."},
             {**base, "action": "reply", "threadId": 3, "content": f"  {MARKER} Fixed in abc1234."},
-            {**base, "action": "update_status", "threadId": 3, "status": "Fixed"},
         ):
             with self.subTest(action=args["action"]):
                 self.assertEqual(self.decide(self.local(tool, args))[0], None)
+        status = {**base, "action": "update_status", "threadId": 3, "status": "Fixed"}
+        decision, reason = self.decide(self.local(tool, status))
+        self.assertEqual(decision, "ask", "thread ownership cannot be checked: the user confirms")
+        self.assertIn("thread 3", reason)
 
     def test_other_azure_devops_writes_are_denied(self) -> None:
         self.repo.write_workflow(phase="build")

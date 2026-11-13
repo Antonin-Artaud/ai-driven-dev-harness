@@ -15,4 +15,6 @@
 ## Out of scope and follow-ups
 - …
 
+Full brief and plan: see the 🤖 Workflow record thread.
+
 > 🤖 Draft prepared by the ai-delivery-workflow. The author reviews it and publishes it.

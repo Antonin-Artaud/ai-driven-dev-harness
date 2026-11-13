@@ -1,9 +1,11 @@
 ---
 title: Data
-verified_on: 2026-10-30
+verified_on: 2026-11-13
 sources:
   - skills/delivery-workflow/
   - scripts/hooks/workflow_gate.py
+  - scripts/hooks/state_policy.py
+  - scripts/close_workflow.py
   - skills/project-onboarding/scripts/onboard.py
 ---
 # Data
@@ -14,10 +16,14 @@ The plugin has no database. Its state lives in files of the target project.
 
 | Store | Content | Committed | Written by | Source |
 |---|---|---|---|---|
-| `.ai/current` | Slug of the active work | no (`.git/info/exclude`) | challenger | `skills/delivery-workflow/SKILL.md` |
-| `.ai/<slug>/state.json` | Workflow state | no | every agent | `skills/delivery-workflow/assets/state-template.json` |
+| `.ai/current` | Slug of the active work | no (`.git/info/exclude`) | challenger, close step | `skills/delivery-workflow/SKILL.md` |
+| `.ai/<slug>/state.json` | Workflow state; every edit is checked by the hooks | no | the agent of the current stage | `skills/delivery-workflow/assets/state-template.json`, `scripts/hooks/state_policy.py` |
 | `.ai/<slug>/brief.md`, `plan.md`, `pr-description.md`, `feedback.md` | Artifacts of each stage | no | challenger, architect, builder | `skills/delivery-workflow/SKILL.md` |
 | `.ai/<slug>/review.md` | Latest review; its front matter is read by the hooks | no | reviewer | `skills/code-review/SKILL.md` |
+| `.ai/<slug>/.hooks.json` | Heartbeat (time, plugin version), `user_prompt_at`, `written_at` and `validated_at` per artifact, `escalated_at`, `untracked_baseline`, `stop_blocks` | no | hooks only | `scripts/hooks/workflow_gate.py`, `state_policy.py`, `user_prompt.py`, `stop.py` |
+| `.ai/<slug>/log.jsonl` | One JSON line per hook decision: `at`, `hook`, `tool`, `decision`, `reason`, `head`, `phase` | no | hooks only (append-only) | `log_event` in `scripts/hooks/workflow_gate.py` |
+| `.ai/<slug>/.reviewer-active`, `.implementer-active` | Subagent markers | no | hooks only | `scripts/hooks/subagent.py` |
+| `.ai/archive/<slug>/` | Closed workflows | no | close step | `scripts/close_workflow.py` |
 | `.vscode/mcp.json` | `ado-read` and `ado-write` declarations | excluded when created by the script and untracked | `onboard.py` | `skills/project-onboarding/scripts/onboard.py` |
 | `docs/architecture/` | Architecture map | yes | architecture-mapping, implementer | `skills/architecture-mapping/SKILL.md` |
 | `AGENTS.md` (AI delivery workflow section) | Project contract | yes | project-onboarding | `skills/project-onboarding/assets/agents-md-section.md` |
@@ -26,30 +32,47 @@ The plugin has no database. Its state lives in files of the target project.
 
 | Field | Values | Read by the hooks |
 |---|---|---|
-| `slug` | kebab-case, 40 characters max, prefixed with the work item ID | through `.ai/current` |
-| `phase` | `challenge` → `design` → `build` → `pr-open` ⇄ `feedback` → `done`, or `escalated` | yes: `done` disables the hooks, `build` and `feedback` enable the review gate, only `build` allows PR creation |
+| `slug` | kebab-case, 40 characters max, prefixed with the work item ID (`SLUG_RE`) | yes: must match the folder |
+| `phase` | see the diagram | yes: `done` disables the hooks, `build` and `feedback` enable the review gate, `pr-open` the record gate, only `build` allows PR creation; transitions are validated |
 | `path` | `fast`, `standard`, `feature` | no |
-| `base_branch`, `branch` | target branch, `ai/<slug>` | `base_branch`: yes |
-| `work_item`, `pull_request` | ID or `null` | no |
-| `review_iterations` | integer, 2 max per cycle | no |
+| `base_branch`, `branch` | target branch, always `ai/<slug>` | `base_branch`: PR target, fixed once the build starts; `branch`: must be `ai/<slug>` (the hooks never trust it) |
+| `work_item` | ID or `null` | no |
+| `brief_validated`, `plan_validated` | `{"at", "head"}` or `null` | yes: required to enter `design` and `build`, need a user prompt after the last write of the file |
+| `lots_done` | append-only list of `{"lot", "commit"}` | yes: append-only within a cycle |
+| `pull_request`, `record_thread` | ID or `null`, set once | yes: PR and comment writes are scoped to `pull_request`; `record_thread` ends the record gate |
+| `review_iterations` | 0 to 2 | yes: +1 per reviewer run, reset to 0 when a cycle starts, equal to the `iteration` of `review.md` |
+| `escalation` | `{"from", "reason"}` | yes: required to enter `escalated` |
 | `language` | language of the request | no |
+| `closed_at`, `closed_from`, `close_reason` | written by the close step | no |
 
-Sources: `skills/delivery-workflow/SKILL.md`, `scripts/hooks/workflow_gate.py` (`INACTIVE_PHASES`, `STOP_GATED_PHASES`, `PR_CREATION_PHASES`).
+Sources: `skills/delivery-workflow/SKILL.md`, `TRANSITIONS` and `check_state_write` in `scripts/hooks/state_policy.py`, `STOP_GATED_PHASES` and `PR_CREATION_PHASES` in `scripts/hooks/workflow_gate.py`.
 
 ```mermaid
 stateDiagram-v2
   [*] --> challenge
-  challenge --> design
-  challenge --> build: fast path
-  design --> build
-  build --> pr_open: draft PR created
-  pr_open --> feedback
-  feedback --> pr_open
-  pr_open --> done
+  challenge --> design: brief validated
+  design --> challenge
+  design --> build: brief and plan validated
+  build --> pr_open: draft PR, APPROVED review
+  pr_open --> triage
+  triage --> feedback: triage validated
+  triage --> pr_open
+  feedback --> pr_open: APPROVED review
+  challenge --> escalated
+  design --> escalated
   build --> escalated
+  pr_open --> escalated
+  triage --> escalated
   feedback --> escalated
+  escalated --> design: user decided
+  escalated --> build: user decided
+  escalated --> pr_open: user decided
+  pr_open --> done: close step
+  escalated --> done: close step
   done --> [*]
 ```
+
+From `escalated` the user may also send the workflow back to `challenge`, `triage` or `feedback`; the close step can end the workflow from any phase.
 
 ## `review.md` front matter
 

@@ -1,6 +1,6 @@
 # Plan — <title>
 
-- Brief: `.ai/<slug>/brief.md` · Path: <fast | standard | feature> · Status: <draft | validated>
+- Brief: `.ai/<slug>/brief.md` · Path: <fast | standard | feature>
 - Base branch: `<base>` · Work branch: `ai/<slug>`
 - Build / lint / test commands: `<from the project contract>`
 
