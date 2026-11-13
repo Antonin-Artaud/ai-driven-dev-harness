@@ -47,6 +47,16 @@ class WindowsInputsTestCase(unittest.TestCase):
         os.utime(marker, (far, far))
         self.assertFalse(wg.marker_active(marker), "a marker far in the future is not trusted")
 
+    def test_implementer_marker_written_in_the_same_clock_tick(self) -> None:
+        """Windows CI failure of test_role_boundaries: the marker's mtime came out ahead of time.time()."""
+        directory = self.repo.write_workflow(phase="build")
+        marker = directory / ".implementer-active"
+        marker.write_text("1\n", encoding="utf-8")
+        ahead = time.time() + 0.02  # a coarse time.time() lags the precise file time by up to one tick
+        os.utime(marker, (ahead, ahead))
+        source = {"filePath": "src/app.py", "content": "x = 1\n"}
+        self.assertEqual(self.evaluate("create_file", source)[0], None, "implementer marker fallback")
+
     def test_replacement_in_a_crlf_state_file(self) -> None:
         path = self.crlf_state(phase="build", review_iterations=0)
         edit = {"filePath": path, "oldString": '"review_iterations": 0', "newString": '"review_iterations": 1'}
