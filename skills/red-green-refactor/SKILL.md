@@ -1,6 +1,7 @@
 ---
 name: red-green-refactor
-description: 'Test-driven development discipline for the builder and the implementer: red (write one failing test and watch it fail for the right reason), green (the minimal code that makes it pass), refactor (clean up with the suite green), one behavior at a time, with the red and green evidence reported per lot. Use when implementing a lot or a fix lot, fixing a bug, briefing an implementer, or checking that a lot report proves the test came first.'
+description: 'Test-driven development discipline of the ai-delivery-workflow, for the builder and the implementer: red (write one failing test and watch it fail for the right reason), green (the minimal code that makes it pass), refactor (clean up with the suite green), one behavior at a time, with the red and green evidence reported per lot. Use only within this delivery workflow, when implementing or briefing a lot or a fix lot, or checking that a lot report proves the test came first.'
+user-invocable: false
 ---
 
 # Red-green-refactor
@@ -27,7 +28,7 @@ Keep the steps small: when a test needs a lot of code to pass, write a smaller t
 - **Deterministic and fast:** no real time, randomness, network or test order dependency without control.
 - **One lot, one commit** (see the `plan-execution` skill): the red, green and refactor steps happen in the working tree; the commit holds the tests and the code together. Do not commit a red suite.
 - **When test-first is not feasible** (pure configuration, generated code, documentation, a spike agreed in the plan, code without any test harness), say so in the lot report with the reason and the alternative check you ran. Missing test infrastructure the lot needs is a `PLAN DEVIATION`, not a reason to skip tests silently.
-- **Only the user waives the tests.** In the `build` and `feedback` phases, the `PreToolUse` hook asks the user to confirm any commit that changes code without a test file (`delivery-workflow` skill). Never rename files or split a commit to get around it. If the user denies the commit, write the failing test first; if the project has no test harness at all (a legacy project without unit or end-to-end tests), report a `PLAN DEVIATION` so that the user decides, once, between adding a harness and accepting lots without tests.
+- **Only the user waives the tests.** In the `build` and `feedback` phases, the `PreToolUse` hook asks the user to confirm any commit that changes code without a test file (gates reference of the `delivery-workflow` skill). Never rename files or split a commit to get around it. If the user denies the commit, write the failing test first; if the project has no test harness at all (a legacy project without unit or end-to-end tests), report a `PLAN DEVIATION` so that the user decides, once, between adding a harness and accepting lots without tests.
 
 ## Evidence in the lot report
 

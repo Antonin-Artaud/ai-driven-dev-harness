@@ -1,6 +1,7 @@
 ---
 name: code-review
-description: 'Independent code review of a work branch (merge-base..HEAD) against brief.md, plan.md and the project''s own review skills and instructions, with baseline correctness, security, performance, maintainability and test checklists as fallback. Writes review.md with severity-ranked findings, a verdict and the reviewed commit SHA. Use when reviewing code, checking plan and acceptance criteria conformance, or re-reviewing fixes.'
+description: 'Review step of the ai-delivery-workflow, for the reviewer subagent: independent review of the work branch (merge-base..HEAD) against .ai/<slug>/brief.md, plan.md and the project''s own review skills, with baseline checklists as fallback; writes .ai/<slug>/review.md with severity-ranked findings, a verdict, the reviewed commit and the iteration. Use only within this delivery workflow, when acting as the reviewer.'
+user-invocable: false
 ---
 
 # Code review
@@ -24,11 +25,11 @@ You are independent from the implementer: verify in the code, never trust summar
    - **minor:** worth fixing, not blocking.
    Skip nits and style already enforced by linters. Each finding gives a location (`file:line`), the problem, the reason (rule or standard) and a suggested fix.
 7. **Verdict:** `APPROVED` when there is no blocker or major finding, otherwise `CHANGES_REQUESTED`.
-8. **Write `.ai/<slug>/review.md`** from the [review template](./assets/review-template.md). The front matter must contain `verdict`, `reviewed_sha` (the full HEAD SHA), `base_sha` and `iteration`: the workflow hooks read them. Replace the previous review and summarize what changed since the last iteration.
+8. **Write `.ai/<slug>/review.md`** from the [review template](./assets/review-template.md). The front matter must contain `verdict`, `reviewed_sha` (the full HEAD SHA), `base_sha` and `iteration`, which is `review_iterations` from `state.json` (the builder increments it before each run): the workflow hooks check them, and refuse a review with another iteration. Replace the previous review and summarize what changed since the last iteration. Write it with the file edit tools, never from the shell: the hooks only accept a `review.md` written by the reviewer subagent.
 9. **Return** a short summary to the builder: verdict, blocker and major findings, and the minor findings to post on the PR.
 
 ## Constraints
 
-- Never modify source code, tests, git history or remote state. The only file you write is `review.md`.
+- Never modify source code, tests, git history or remote state. The only file you write is `review.md` (the hooks deny any other write from the reviewer).
 - In a re-review, focus on the new commits and check that the previous blocking findings are resolved, without reopening settled decisions.
 - Be concise and specific: a finding without a location and a reason is not actionable.

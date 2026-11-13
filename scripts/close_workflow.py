@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+"""Close step of the ai-delivery-workflow: archive the active workflow.
+
+Sets ``phase: done`` (with ``closed_at`` and the reason) in ``.ai/<slug>/state.json``, moves
+``.ai/<slug>/`` to ``.ai/archive/<slug>/`` (suffixed with a timestamp if that folder exists) and
+removes ``.ai/current``. The PreToolUse hook asks the user before an agent runs it. Prints a JSON
+summary; exit code 0 on success, 1 when there is nothing to close or the files cannot be moved.
+
+Usage: python close_workflow.py [--repo <path>] [--reason <text>]
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import shutil
+import sys
+import time
+from pathlib import Path
+from typing import Any, Dict, Optional, Sequence
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "hooks"))
+
+import workflow_gate as wg  # noqa: E402
+
+
+def close(repo: Path, reason: str) -> Dict[str, Any]:
+    root = wg.find_repo_root(repo)
+    if root is None:
+        return {"ok": False, "error": f"'{repo}' is not inside a git repository."}
+    slug = wg.read_current_slug(root)
+    if slug is None:
+        return {"ok": False, "error": "no active workflow: .ai/current is missing or invalid."}
+    workflow = wg.workflow_for(root, slug)
+    previous = workflow.phase
+    state = dict(workflow.state)
+    state.update(phase="done", closed_at=wg.now_iso(), close_reason=reason, closed_from=previous)
+    workflow.directory.mkdir(parents=True, exist_ok=True)
+    (workflow.directory / "state.json").write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+    wg.log_event(workflow, "close", "close_workflow.py", "done", reason)
+    for marker in (workflow.reviewer_marker, workflow.implementer_marker):
+        marker.unlink(missing_ok=True)
+    archive = root / wg.WORKFLOW_DIR / wg.ARCHIVE_DIR
+    destination = archive / slug
+    if destination.exists():
+        destination = archive / f"{slug}-{time.strftime('%Y%m%d%H%M%S')}"
+    archive.mkdir(parents=True, exist_ok=True)
+    try:
+        shutil.move(str(workflow.directory), str(destination))
+        (root / wg.WORKFLOW_DIR / "current").unlink(missing_ok=True)
+    except OSError as exc:
+        return {"ok": False, "error": f"cannot archive the workflow: {exc}", "slug": slug}
+    return {
+        "ok": True,
+        "slug": slug,
+        "closed_from": previous,
+        "archived_to": destination.relative_to(root).as_posix(),
+        "pull_request": state.get("pull_request"),
+    }
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    parser = argparse.ArgumentParser(description="Close and archive the active delivery workflow.")
+    parser.add_argument("--repo", default=".", help="Path inside the git repository (default: current directory).")
+    parser.add_argument("--reason", default="closed by the user", help="Why the workflow is closed.")
+    args = parser.parse_args(argv)
+    result = close(Path(args.repo), args.reason)
+    sys.stdout.write(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
+    return 0 if result["ok"] else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,11 +1,35 @@
 {
   "version": 1,
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "type": "command",
+        "bash": "python3 \"${PLUGIN_ROOT}/scripts/hooks/user_prompt.py\"",
+        "powershell": "python \"${PLUGIN_ROOT}/scripts/hooks/user_prompt.py\"",
+        "timeoutSec": 15
+      }
+    ],
     "PreToolUse": [
       {
         "type": "command",
         "bash": "python3 \"${PLUGIN_ROOT}/scripts/hooks/pre_tool_use.py\"",
         "powershell": "python \"${PLUGIN_ROOT}/scripts/hooks/pre_tool_use.py\"",
+        "timeoutSec": 15
+      }
+    ],
+    "SubagentStart": [
+      {
+        "type": "command",
+        "bash": "python3 \"${PLUGIN_ROOT}/scripts/hooks/subagent.py\" start",
+        "powershell": "python \"${PLUGIN_ROOT}/scripts/hooks/subagent.py\" start",
+        "timeoutSec": 15
+      }
+    ],
+    "SubagentStop": [
+      {
+        "type": "command",
+        "bash": "python3 \"${PLUGIN_ROOT}/scripts/hooks/subagent.py\" stop",
+        "powershell": "python \"${PLUGIN_ROOT}/scripts/hooks/subagent.py\" stop",
         "timeoutSec": 15
       }
     ],

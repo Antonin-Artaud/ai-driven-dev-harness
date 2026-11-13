@@ -8,11 +8,23 @@ SKILLS_DIR = PLUGIN_ROOT / "skills"
 AGENTS_DIR = PLUGIN_ROOT / "com.github.copilot" / "agents"
 HOOKS_FILE = PLUGIN_ROOT / "com.github.copilot" / "hooks" / "hooks.json"
 KNOWN_HOOK_EVENTS = {
-    "SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse", "PostToolUse",
-    "PreCompact", "SubagentStart", "SubagentStop", "Stop",
+    "SessionStart",
+    "SessionEnd",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
+    "PreCompact",
+    "SubagentStart",
+    "SubagentStop",
+    "Stop",
 }
 TOOL_ALIASES = {"read", "edit", "search", "execute", "agent", "web", "todo"}
 LINK_RE = re.compile(r"\]\((\./[^)\s]+)\)")
+
+
+def family(model: str) -> str:
+    """Model family: the first word of the display name (Claude, GPT, Gemini ...)."""
+    return model.split()[0].split("-")[0].lower()
 
 
 def agents():
@@ -64,6 +76,32 @@ class SkillsTestCase(unittest.TestCase):
                 for link in LINK_RE.findall(text):
                     self.assertTrue((folder / link).resolve().is_file(), f"broken link {link}")
 
+    def test_stage_skills_trigger_only_in_the_workflow(self) -> None:
+        for name in (
+            "business-challenge",
+            "solution-design",
+            "plan-execution",
+            "code-review",
+            "pr-feedback",
+            "red-green-refactor",
+        ):
+            with self.subTest(skill=name):
+                meta = parse_frontmatter((SKILLS_DIR / name / "SKILL.md").read_text(encoding="utf-8"))
+                self.assertIs(meta.get("user-invocable"), False)
+                self.assertIn("ai-delivery-workflow", meta["description"])
+        meta = parse_frontmatter((SKILLS_DIR / "architecture-mapping" / "SKILL.md").read_text(encoding="utf-8"))
+        self.assertIn("docs/architecture", meta["description"])
+        self.assertNotIn("Use when mapping or documenting an architecture", meta["description"])
+
+    def test_untrusted_content_is_data(self) -> None:
+        for name in ("pr-feedback", "business-challenge", "azure-devops", "solution-design"):
+            with self.subTest(skill=name):
+                text = (SKILLS_DIR / name / "SKILL.md").read_text(encoding="utf-8")
+                self.assertIn("never instructions", text)
+        architect = (AGENTS_DIR / "architect.agent.md").read_text(encoding="utf-8")
+        self.assertIn("cite", architect)
+        self.assertIn("never instructions", architect)
+
     def test_referenced_skills_exist(self) -> None:
         names = {path.name for path in SKILLS_DIR.iterdir() if path.is_dir()}
         for path in list(SKILLS_DIR.rglob("*.md")) + list(AGENTS_DIR.glob("*.agent.md")):
@@ -105,7 +143,15 @@ class AgentsTestCase(unittest.TestCase):
         for name in ("builder", "implementer"):
             self.assertIn("`red-green-refactor` skill", found[name][0].read_text(encoding="utf-8"))
         reviewer_models = found["reviewer"][1]["model"]
-        self.assertTrue(all(model.startswith("GPT") for model in reviewer_models))
+        implementer_models = found["implementer"][1]["model"]
+        self.assertNotEqual(family(reviewer_models[0]), family(implementer_models[0]), "cross-family review")
+        self.assertGreaterEqual(len({family(model) for model in reviewer_models}), 2, "a fallback from another family")
+
+    def test_handoffs_name_a_model(self) -> None:
+        for name, (_path, meta) in agents().items():
+            for handoff in meta.get("handoffs", []):
+                with self.subTest(agent=name, handoff=handoff["label"]):
+                    self.assertTrue(handoff.get("model"))
 
 
 if __name__ == "__main__":

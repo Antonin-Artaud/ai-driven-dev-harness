@@ -5,7 +5,12 @@
   "base_branch": "main",
   "branch": "ai/1234-short-kebab-title",
   "work_item": null,
+  "brief_validated": null,
+  "plan_validated": null,
+  "lots_done": [],
   "pull_request": null,
+  "record_thread": null,
   "review_iterations": 0,
+  "escalation": null,
   "language": "en"
 }
