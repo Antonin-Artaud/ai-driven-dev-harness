@@ -3,7 +3,8 @@
 
 * Detects the Azure DevOps organization, project and repository from the ``origin`` remote.
 * Detects the base branch.
-* Creates or merges ``.vscode/mcp.json`` with the ``ado-read`` and ``ado-write`` servers.
+* Creates or merges ``.vscode/mcp.json`` with the ``ado-read`` and ``ado-write`` servers, and with the
+  read-only Microsoft Learn documentation server ``ms-learn`` when the repository is a .NET project.
 * Adds ``.ai/`` (and a newly created, untracked ``.vscode/mcp.json``) to ``.git/info/exclude``.
 * With ``--docs``: creates the architecture map skeleton (``docs/architecture/`` by default) without
   overwriting existing files; the architecture-mapping skill fills it.
@@ -14,6 +15,8 @@ UTF-8 with LF line endings. Standard library only, Python >= 3.9.
 
 The server URL and the ``X-MCP-*`` headers follow the documentation of the remote Azure DevOps MCP
 server: https://learn.microsoft.com/en-us/azure/devops/mcp-server/remote-mcp-server (checked 2026-11-13).
+The ``ms-learn`` entry follows https://learn.microsoft.com/en-us/training/support/mcp and
+https://github.com/MicrosoftDocs/mcp (streamable HTTP, no authentication; checked 2026-11-13).
 """
 
 from __future__ import annotations
@@ -35,6 +38,10 @@ READ_SERVER = "ado-read"
 WRITE_SERVER = "ado-write"
 READ_TOOLSETS = "repos,wit,wiki"
 WRITE_TOOLS = "repo_pull_request_write, repo_pull_request_thread_write"
+DOCS_SERVER = "ms-learn"
+DOCS_ENDPOINT = "https://learn.microsoft.com/api/mcp"
+# Files that make a repository a .NET project (git pathspecs match in every folder).
+DOTNET_MARKERS = ("*.sln", "*.slnx", "*.csproj", "*.fsproj", "*.vbproj", "global.json")
 MCP_CONFIG = ".vscode/mcp.json"
 WORKFLOW_EXCLUDE = ".ai/"
 DOCS_DEFAULT = "docs/architecture"
@@ -188,6 +195,33 @@ def strip_jsonc(text: str) -> Tuple[str, bool]:
     return cleaned, had_comments
 
 
+def detect_dotnet(root: Path, forced: bool) -> Dict[str, Any]:
+    """A .NET project has a solution, a project file or a global.json, tracked or at the root."""
+    if forced:
+        return {"detected": True, "source": "--dotnet"}
+    tracked = git(root, "ls-files", "--", *DOTNET_MARKERS)
+    found = tracked.splitlines()[0] if tracked else None
+    if not found:
+        found = next(
+            (path.relative_to(root).as_posix() for pattern in DOTNET_MARKERS for path in sorted(root.glob(pattern))),
+            None,
+        )
+    if not found:
+        found = next(
+            (
+                path.relative_to(root).as_posix()
+                for pattern in DOTNET_MARKERS
+                for path in sorted(root.glob(f"*/{pattern}")) + sorted(root.glob(f"*/*/{pattern}"))
+            ),
+            None,
+        )
+    return {"detected": bool(found), "source": found}
+
+
+def docs_server() -> Dict[str, Dict[str, Any]]:
+    return {DOCS_SERVER: {"type": "http", "url": DOCS_ENDPOINT}}
+
+
 def desired_servers(organization: str) -> Dict[str, Dict[str, Any]]:
     url = MCP_ENDPOINT.format(organization=organization)
     return {
@@ -209,9 +243,8 @@ def write_json(path: Path, data: Any) -> None:
     write_lf(path, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
 
 
-def merge_mcp_config(root: Path, organization: str, dry_run: bool, force: bool) -> Dict[str, Any]:
+def merge_mcp_config(root: Path, desired: Dict[str, Dict[str, Any]], dry_run: bool, force: bool) -> Dict[str, Any]:
     path = root / MCP_CONFIG
-    desired = desired_servers(organization)
     result: Dict[str, Any] = {"path": MCP_CONFIG, "servers": sorted(desired)}
     if not path.exists():
         result["action"] = "created"
@@ -339,6 +372,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--force", action="store_true", help="Replace conflicting ado-read/ado-write definitions.")
     parser.add_argument("--docs", action="store_true", help="Create the architecture map skeleton.")
     parser.add_argument(
+        "--dotnet",
+        action="store_true",
+        help=f"Add the '{DOCS_SERVER}' documentation server even if no .NET file is found.",
+    )
+    parser.add_argument(
         "--docs-path", help=f"Folder of the architecture map, relative to the repository (default: {DOCS_DEFAULT})."
     )
     args = parser.parse_args(argv)
@@ -376,30 +414,43 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     exclude = [WORKFLOW_EXCLUDE]
     next_steps = []
     summary["azure_devops_server"] = None
+    dotnet = detect_dotnet(root, args.dotnet)
+    summary["dotnet"] = dotnet
+    desired: Dict[str, Dict[str, Any]] = {}
     if ado:
-        mcp = merge_mcp_config(root, ado["organization"], args.dry_run, args.force)
-        mcp["tracked"] = git(root, "ls-files", "--error-unmatch", MCP_CONFIG) is not None
-        if mcp["action"] == "created" and not mcp["tracked"]:
-            exclude.append(MCP_CONFIG)
-        summary["mcp_json"] = mcp
+        desired.update(desired_servers(ado["organization"]))
         next_steps.append(
             f"Start '{READ_SERVER}' and '{WRITE_SERVER}' from the MCP view (Microsoft Entra sign-in), "
             "then list the project's repositories with an ado-read tool."
         )
+    if dotnet["detected"]:
+        desired.update(docs_server())
+        next_steps.append(
+            f"Start '{DOCS_SERVER}' from the MCP view: the agents check .NET APIs in the Microsoft Learn documentation "
+            "(dotnet-performance skill)."
+        )
+    if desired:
+        mcp = merge_mcp_config(root, desired, args.dry_run, args.force)
+        mcp["tracked"] = git(root, "ls-files", "--error-unmatch", MCP_CONFIG) is not None
+        if mcp["action"] == "created" and not mcp["tracked"]:
+            exclude.append(MCP_CONFIG)
+        summary["mcp_json"] = mcp
     else:
         summary["mcp_json"] = None
+    if not ado:
         server = parse_ado_server_remote(remote) if remote else None
         summary["azure_devops_server"] = server
         if server:
             summary["warnings"].append(
                 f"origin is an Azure DevOps Server (on-premises) remote ({server['server']}, collection "
                 f"'{server['collection']}'): the remote Azure DevOps MCP server is documented for Azure DevOps "
-                "Services (https://mcp.dev.azure.com/<organization>), so no MCP configuration was generated. "
-                "Work item intake and draft PR creation are manual; the hooks and the rest of the workflow still apply."
+                "Services (https://mcp.dev.azure.com/<organization>), so no Azure DevOps MCP configuration was "
+                "generated. Work item intake and draft PR creation are manual; the hooks and the rest of the "
+                "workflow still apply."
             )
     if not ado and not (remote and parse_ado_server_remote(remote)):
         summary["warnings"].append(
-            "origin is not an Azure Repos remote: no MCP configuration was generated, so work item intake "
+            "origin is not an Azure Repos remote: no Azure DevOps MCP configuration was generated, so work item intake "
             "and draft PR creation are unavailable."
             if remote
             else "no 'origin' remote: add the Azure Repos remote, then rerun this script."

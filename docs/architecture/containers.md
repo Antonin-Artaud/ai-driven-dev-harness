@@ -15,7 +15,7 @@ The units that make up the plugin and how they communicate (C4 level 2). Nothing
 | Unit | Technology | Responsibility | Source |
 |---|---|---|---|
 | Manifest | Agent Plugins 1.0 JSON | Name, version, source repository; releases in `CHANGELOG.md` | `plugin.json` |
-| Agents | Markdown + front matter (`*.agent.md`) | 3 interactive agents (challenger, architect, builder) and 2 hidden subagents (implementer, reviewer): tools, model, handoffs | `com.github.copilot/agents/` |
+| Agents | Markdown + front matter (`*.agent.md`) | 5 interactive agents (challenger, architect, security-architect, performance-architect, builder) and 3 hidden subagents (implementer, ui-ux-designer, reviewer); the two specialists also run as architect subagents | `com.github.copilot/agents/` |
 | Skills | Markdown (`SKILL.md`) + assets and references | The whole method: procedures, templates, checklists | `skills/` |
 | Hooks | Python ≥ 3.9, standard library only | Deterministic `UserPromptSubmit`, `PreToolUse`, `SubagentStart`, `SubagentStop` and `Stop` gates | `com.github.copilot/hooks/hooks.json`, `scripts/hooks/` |
 | Close step | Python, standard library | Ends a workflow: `phase: done`, archive, `.ai/current` removed | `scripts/close_workflow.py` |

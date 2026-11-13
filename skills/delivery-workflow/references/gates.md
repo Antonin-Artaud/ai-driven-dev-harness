@@ -10,8 +10,9 @@ The hooks (`com.github.copilot/hooks/hooks.json`, scripts in `scripts/hooks/`) o
 |---|---|---|
 | `.ai/<slug>/state.json` | the agent of the current stage | file edit tools only (full write, exact string replacement or patch); every edit is simulated and checked (below) |
 | `.ai/<slug>/review.md` | the reviewer subagent only | file edit tools; `iteration` must equal `review_iterations` (1 or 2) |
+| `.ai/<slug>/security.md`, `performance.md` | the security-architect, the performance-architect (or the main agent when the user runs the specialist directly) | file edit tools; denied to every other subagent |
 | `.ai/current` | challenger, close step | cannot switch away while the workflow is in `build`, `pr-open`, `triage` or `feedback` |
-| `.ai/<slug>/.hooks.json`, `log.jsonl`, `.reviewer-active`, `.implementer-active` | the hooks only | never written by an agent |
+| `.ai/<slug>/.hooks.json`, `log.jsonl`, `.<subagent>-active` markers | the hooks only | never written by an agent |
 
 None of these files is ever written from the shell (`>`, `Set-Content`, `cp`, `sed -i`, `python -c` ...).
 
@@ -44,10 +45,11 @@ Other rules on every edit:
 | Caller | Rule |
 |---|---|
 | reviewer subagent | writes `review.md` only; any other file write is denied |
-| implementer subagent | never writes under `.ai/` |
+| implementer and ui-ux-designer subagents | never write under `.ai/` |
+| security-architect, performance-architect subagents | write only their own file (`security.md`, `performance.md`); no code, no `plan.md` |
 | main agent (challenger, architect, builder) | writing outside `.ai/` asks the user in every phase except `escalated` |
 
-The caller is recognized by the `agent_type` field of hooks fired in a subagent, or by the `.reviewer-active` and `.implementer-active` markers written by `SubagentStart` and removed by `SubagentStop` and `Stop`. The hooks cannot tell the challenger, the architect and the builder apart: the main-agent rule is enforced by phase.
+The caller is recognized by the `agent_type` field of hooks fired in a subagent, or by the `.<subagent>-active` markers written by `SubagentStart` and removed by `SubagentStop` and `Stop` (the reviewer marker only lets `review.md` through). The hooks cannot tell the challenger, the architect and the builder apart: the main-agent rule is enforced by phase.
 
 ## Stop gates
 

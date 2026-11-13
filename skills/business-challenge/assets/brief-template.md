@@ -1,6 +1,7 @@
 # Brief — <title>
 
 - Work item: <#ID or none> · Path: <fast | standard | feature>
+- Concerns: <security, performance, ui — or none> (the architect consults the matching specialists)
 
 ## Problem
 <One or two sentences: the problem and who has it, without solution vocabulary.>
@@ -21,6 +22,9 @@
 
 ## Non-functional expectations
 <Performance, security and privacy, compliance, operability, accessibility, compatibility, or "none".>
+
+## UX intent
+<Only when users see the change: who, the task they perform, the key screens and the states that matter (empty, error...), existing screens to stay consistent with. Or: **none**.>
 
 ## Out of scope
 - …

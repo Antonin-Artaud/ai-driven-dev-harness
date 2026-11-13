@@ -211,15 +211,20 @@ def ai_relative(path: str) -> Optional[str]:
 
 
 def identity(hook: wg.HookInput, workflow: wg.Workflow) -> str:
-    """``reviewer``, ``implementer``, ``subagent`` (unknown) or ``main``."""
-    if hook.is_reviewer:
-        return "reviewer"
-    if hook.is_implementer:
-        return "implementer"
+    """A workflow subagent name (``reviewer``, ``implementer``, ``ui-ux-designer``, ``security-architect``,
+    ``performance-architect``), ``subagent`` (unknown) or ``main``.
+
+    The ``agent_type`` of the payload wins; otherwise a fresh SubagentStart marker of a writing
+    subagent (the reviewer marker only lets review.md through, see ``evaluate_ai_write``).
+    """
+    named = hook.subagent
+    if named:
+        return named
     if hook.agent:
         return "subagent"
-    if workflow.implementer_running():
-        return "implementer"
+    running = workflow.running_subagent((*wg.CODING_AGENTS, *wg.SPECIALIST_FILES))
+    if running:
+        return running
     if hook.agent_id:
         return "subagent"
     return "main"
@@ -456,8 +461,11 @@ def evaluate_ai_write(
     parts = relative.split("/")
     name = parts[-1].lower()
     root = workflow.root
-    if who == "implementer":
-        return deny("the implementer never writes under .ai/ (plan-execution skill): report to the builder instead.")
+    if who in wg.CODING_AGENTS:
+        return deny(f"the {who} never writes under .ai/ (plan-execution skill): report to the builder instead.")
+    own_file = wg.SPECIALIST_FILES.get(who)
+    if own_file and (len(parts) != 2 or parts[0] != workflow.slug or name != own_file):
+        return deny(f"the {who} only writes .ai/{workflow.slug}/{own_file} (it does not write the plan or code).")
     if parts == ["current"]:
         if who == "reviewer":
             return deny("the reviewer only writes review.md.")
@@ -488,6 +496,9 @@ def evaluate_ai_write(
         )
     if who == "reviewer":
         return deny("the reviewer only writes review.md (code-review skill).")
+    owner = next((agent for agent, file in wg.SPECIALIST_FILES.items() if file == name), None)
+    if owner and who not in (owner, "main"):
+        return deny(f"{name} is written by the {owner} only.")
     if name == "state.json":
         if write.delete:
             return deny("state.json is never deleted: use the close step.")
@@ -535,6 +546,8 @@ def evaluate_file_write(hook: wg.HookInput, workflow: Optional[wg.Workflow]) -> 
 def evaluate_outside_write(workflow: wg.Workflow, who: str, path: str) -> Decision:
     if who == "reviewer":
         return deny(f"the reviewer is read-only on the code: it only writes review.md (tried {path}).")
+    if who in wg.SPECIALIST_FILES:
+        return deny(f"the {who} does not write code: it only writes .ai/<slug>/{wg.SPECIALIST_FILES[who]}.")
     if who != "main" or workflow.phase == "escalated":
         return NO_DECISION
     if workflow.phase in ("challenge", "design"):

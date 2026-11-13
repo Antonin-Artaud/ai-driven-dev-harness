@@ -47,7 +47,7 @@ def evaluate(hook: wg.HookInput) -> Blocked:
     workflow = wg.load_workflow(hook.cwd)
     if workflow is None:
         return None
-    for marker in (workflow.reviewer_marker, workflow.implementer_marker):
+    for marker in workflow.markers():
         marker.unlink(missing_ok=True)
     wg.touch_heartbeat(workflow, "Stop")
     blocked = gate(workflow)

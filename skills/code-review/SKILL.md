@@ -15,6 +15,9 @@ You are independent from the implementer: verify in the code, never trust summar
 3. **Conformance.**
    - Every lot and task of the plan is implemented; nothing outside the plan (scope creep) unless it is listed as a deviation.
    - Every acceptance criterion is covered by at least one meaningful test.
+   - Every security (`SEC-n`) and performance (`PERF-n`) requirement of the plan, from `security.md` and `performance.md`, is met in its lot and proven by its test or check; a miss is reported with the severity the plan gave it.
+   - On a .NET project, the code passes the `.NET performance` section of the [baseline checklist](./references/baseline-checklist.md) (rules and sources in the `dotnet-performance` skill), unless a project skill covers it.
+   - Lots marked `Kind: ui` also pass the UI section of the [baseline checklist](./references/baseline-checklist.md), unless a project UI skill covers it.
    - The decisions of the plan's ADR are respected, and so are the existing ADRs of the architecture docs.
    - **Documentation:** the architecture docs (folder from the project contract, `docs/architecture/` by default) match the diff. Every page and ADR listed in the plan's `Documentation impact` is updated; a change to an integration, a flow, a security rule, a data store or a component boundary without the matching page update is a **major** finding, even when the plan said `none`. Pages follow the rules of the `architecture-mapping` skill (sourced statements, valid Mermaid, no secrets). Changes without architectural effect (wording, labels, styles, translations, tests only, internal refactoring) need no update: do not report them.
 4. **Quality:** correctness first (logic, edge cases, error handling, concurrency), then security, performance, maintainability and tests, guided by the standards of step 2.

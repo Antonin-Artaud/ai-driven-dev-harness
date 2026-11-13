@@ -19,7 +19,7 @@ Short, sourced map of the `ai-delivery-workflow` plugin. Every statement cites t
 | [Security](./security.md) | Identity, hook gates, trust boundaries |
 | [Quality](./quality.md) | Limits, hook reliability, tests and CI |
 | [Glossary](./glossary.md) | Workflow terms |
-| [Decisions](./decisions/) | ADRs 0001–0006 |
+| [Decisions](./decisions/) | ADRs 0001–0008 |
 
 ## To confirm
 

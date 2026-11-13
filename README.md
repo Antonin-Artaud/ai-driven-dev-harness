@@ -4,8 +4,11 @@ Plugin d'agents (format [Agent Plugins 1.0](https://agent-plugins.org/)) pour VS
 
 ```
 challenger ─▶ architect ─▶ builder ─▶ PR draft ─▶ ta revue dans Azure DevOps ─▶ builder (retours) ─▶ tu publies
- brief.md      plan.md      ├─ implementer (subagent, un lot à la fois)
-                            └─ reviewer (subagent indépendant, autre famille de modèles)
+ brief.md      plan.md      ├─ implementer (subagent, un lot de code à la fois)
+               │            ├─ ui-ux-designer (subagent, un lot UI à la fois)
+               │            └─ reviewer (subagent indépendant, autre famille de modèles)
+               ├─ security-architect (subagent si la sécurité est en jeu : security.md)
+               └─ performance-architect (subagent si la performance est en jeu : performance.md)
 ```
 
 Chaque passage entre agents interactifs est un **handoff** (`send: false`) : tu valides le brief ou le plan, puis tu cliques.
@@ -16,11 +19,18 @@ Chaque passage entre agents interactifs est un **handoff** (`send: false`) : tu 
 |---|---|
 | `challenger` (agent) | Challenge le besoin, trie la demande (fast, standard, feature) et produit `brief.md` |
 | `architect` (agent) | Part de la cartographie `docs/architecture/`, vérifie dans le code, compare des options, conteste ta vision et produit `plan.md` découpé en lots, avec l'impact sur la doc |
-| `builder` (agent) | Orchestre implementer et reviewer, pousse la branche, ouvre la PR draft et traite les commentaires de PR |
+| `security-architect` (agent et subagent de l'architect) | Modélise les menaces (STRIDE) et écrit `security.md` : mitigations, exigences `SEC-n` par lot, risque résiduel. Ne code pas. Consulté par l'architect quand le brief ou le changement touche la sécurité, ou lancé directement par toi pour analyser un plan |
+| `performance-architect` (agent et subagent de l'architect) | Fixe les budgets, repère les chemins chauds et les volumes, prévoit les mesures et écrit `performance.md` avec des exigences `PERF-n` par lot. Ne code pas. Même mode de consultation |
+| `builder` (agent) | Orchestre implementer, ui-ux-designer et reviewer, pousse la branche, ouvre la PR draft et traite les commentaires de PR |
 | `implementer` (subagent caché) | Implémente un lot en TDD (red-green-refactor) : tests, code, mise à jour de la doc d'architecture, un commit |
-| `reviewer` (subagent caché) | Relit `merge-base..HEAD` en appliquant d'abord les skills du projet, vérifie que la doc d'architecture suit le code, puis écrit `review.md` |
-| `skills/` | `delivery-workflow`, `business-challenge`, `solution-design`, `plan-execution`, `red-green-refactor`, `code-review`, `pr-feedback`, `azure-devops`, `project-onboarding`, `architecture-mapping` |
-| `com.github.copilot/hooks/hooks.json` | Garde-fous déterministes `PreToolUse`, `SubagentStart`, `SubagentStop` et `Stop` (scripts Python, bibliothèque standard uniquement) |
+| `ui-ux-designer` (subagent caché) | Implémente les lots marqués `Kind: ui` : design system du projet d'abord, accessibilité WCAG 2.1 AA, tous les états (chargement, vide, erreur…), responsive, i18n, preuves visuelles quand le projet sait en produire |
+| `reviewer` (subagent caché) | Relit `merge-base..HEAD` en appliquant d'abord les skills du projet, vérifie les exigences `SEC-n` et `PERF-n` du plan, la checklist UI des lots UI et la doc d'architecture, puis écrit `review.md` |
+| `skills/` | `delivery-workflow`, `business-challenge`, `solution-design`, `security-design`, `performance-design`, `dotnet-performance`, `plan-execution`, `red-green-refactor`, `ui-ux-design`, `code-review`, `pr-feedback`, `azure-devops`, `project-onboarding`, `architecture-mapping` |
+| `com.github.copilot/hooks/hooks.json` | Garde-fous déterministes `UserPromptSubmit`, `PreToolUse`, `SubagentStart`, `SubagentStop` et `Stop` (scripts Python, bibliothèque standard uniquement) |
+
+### Projets .NET
+
+Sur un projet .NET, le skill `dotnet-performance` vise le code le plus économe en mémoire et le plus performant possible, en deux niveaux. Le **niveau A** s'applique à tout le code .NET écrit : lectures EF Core sans suivi (`AsNoTracking` ou `QueryTrackingBehavior.NoTracking` par défaut), projections, pas de N+1, pagination keyset, `ExecuteUpdate`/`ExecuteDelete`, async de bout en bout, logs et JSON générés par source, analyseurs CA18xx. Le **niveau B** s'applique aux chemins chauds couverts par une exigence `PERF-n` : `Span<T>`, `Memory<T>`, `stackalloc`, `ArrayPool<T>`, `ValueTask`, `SearchValues`, Pipelines, SIMD… avec un benchmark BenchmarkDotNet (`[MemoryDiagnoser]`) avant/après. Chaque règle cite sa source Microsoft Learn et la version requise. L'onboarding ajoute le serveur MCP **`ms-learn`** (documentation Microsoft Learn, sans authentification) pour que les agents vérifient les API dans la documentation officielle.
 
 Les agents restent légers. Toute la méthode vit dans les skills, un format portable, et chaque projet garde la main grâce à ses propres skills : **les skills du projet passent avant ceux du plugin**.
 
@@ -67,13 +77,13 @@ Dans les deux cas, le workspace doit être approuvé (*trusted*), sinon les hook
 3. Il te propose de cartographier l'application (skill `architecture-mapping`) : il te montre les pages et les points « À confirmer », puis les commite sur une branche dédiée pour une PR.
 4. Il rédige la section **AI delivery workflow** de `AGENTS.md` : commandes, branche de base, glossaire et correspondance optionnelle entre étapes et skills du projet. Il te demande validation avant d'écrire.
 5. Commite `AGENTS.md`, et `.vscode/mcp.json` s'il est suivi par git, sur la branche de base. Le builder exige un arbre de travail propre avant de créer sa branche `ai/<slug>`.
-6. Démarre `ado-read` et `ado-write` depuis la vue MCP (connexion Entra).
+6. Démarre `ado-read` et `ado-write` depuis la vue MCP (connexion Entra), ainsi que `ms-learn` sur un projet .NET (détecté par un `*.sln`, `*.slnx`, `*.csproj` ou `global.json`, ou forcé avec `--dotnet`).
 
 ## Utilisation
 
 1. Sélectionne l'agent **challenger** et donne ta demande, ou un ID ou une URL de work item.
 2. Réponds aux questions (5 maximum par tour, chacune avec une réponse par défaut) et valide `brief.md`. Clique ensuite sur **Design the solution**, ou sur **Fast path** pour un petit changement.
-3. L'**architect** propose des options, conteste ta vision et produit `plan.md`. Valide-le, puis clique sur **Implement the plan**.
+3. L'**architect** propose des options, conteste ta vision et produit `plan.md`. Valide-le, puis clique sur **Implement the plan**. Selon le brief (ligne `Concerns`), il consulte le **security-architect** et le **performance-architect**, intègre leurs exigences dans les lots et marque les lots UI (`Kind: ui`), confiés ensuite à l'**ui-ux-designer**.
 4. Le **builder** fait implémenter les lots et relire la branche (2 itérations de review au maximum, sinon il te passe la main). Il pousse la branche, puis crée la PR draft liée au work item ; tu confirmes chacune de ces deux actions. Il archive ensuite le brief et le plan sur la PR dans le fil **🤖 Workflow record**.
 5. Relis la PR draft dans Azure DevOps et commente.
 6. De retour dans VS Code, clique sur **Address PR feedback**. Le builder passe en phase `triage`, classe les commentaires et propose des **learnings** : les règles réutilisables révélées par tes commentaires, à ajouter aux skills du projet, à ses instructions ou à `AGENTS.md`. **Tu valides le classement et chaque learning**, puis il corrige, commite les learnings à part (`docs(agents): …`), fait relire et répond à chaque fil. Un commentaire fait une fois n'a plus à être refait à la PR suivante.
@@ -130,9 +140,9 @@ Ces fichiers restent locaux : le brief et le plan validés survivent à la PR gr
 
 | Agent | Modèle (avec repli) |
 |---|---|
-| challenger, architect | Claude Opus 5.5 (Claude Opus 5) |
-| builder, implementer | Claude Sonnet 5.5 (Claude Sonnet 5) |
-| reviewer | GPT-6.1 Sol (GPT-6 Astra, puis Gemini 3.1 Pro) : autre famille que l'implementer, donc moins d'angles morts partagés. Le nom Gemini est **à confirmer** dans ton sélecteur de modèles. |
+| challenger, architect, security-architect, performance-architect | Claude Opus 5.5 (Claude Opus 5) |
+| builder, implementer, ui-ux-designer | Claude Sonnet 5.5 (Claude Sonnet 5) |
+| reviewer | GPT-6.1 Sol (GPT-6 Astra, puis Gemini 3.1 Pro) : autre famille que l'implementer et l'ui-ux-designer, donc moins d'angles morts partagés. Le nom Gemini est **à confirmer** dans ton sélecteur de modèles. |
 
 En Local, le champ `model` de l'en-tête d'un agent s'applique aux subagents. Pour les agents interactifs, c'est le `model` du handoff (présent sur chaque handoff, y compris **Address PR feedback**) qui choisit le modèle au moment du passage, et le challenger utilise le modèle sélectionné dans le sélecteur. Les noms doivent correspondre exactement à ceux du sélecteur de modèles, au format `<nom> (copilot)`.
 

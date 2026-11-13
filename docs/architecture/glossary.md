@@ -26,6 +26,9 @@ sources:
 | Close step | Script that ends a workflow: `phase: done`, archive under `.ai/archive/`, `.ai/current` removed | `scripts/close_workflow.py` |
 | Hook state | Files only the hooks write: heartbeat, last user prompt, validation and escalation times, decision log | `.hooks.json`, `log.jsonl` |
 | Heartbeat | Time and plugin version written by the hooks; the builder refuses to build without a fresh one | `touch_heartbeat` |
+| Lot kind | `ui` lots go to the ui-ux-designer, `code` lots to the implementer | `Kind:` in `plan.md` |
+| Specialist | security-architect or performance-architect, consulted by the architect when the brief's `Concerns` line or the change calls for it | `security.md`, `performance.md` |
+| SEC-n, PERF-n | Security and performance requirements per lot, with the severity the reviewer uses if they are missed | `plan.md` |
 | Plan deviation | Report from the implementer when the plan is wrong or impossible | `PLAN DEVIATION` |
 | Project contract | "AI delivery workflow" section of `AGENTS.md`: commands, branch, Azure DevOps coordinates, architecture docs | `AGENTS.md` |
 | Skill precedence | Project skills win over the plugin's skills | `delivery-workflow` skill |

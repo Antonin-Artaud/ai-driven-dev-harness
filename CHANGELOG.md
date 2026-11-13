@@ -4,11 +4,27 @@ All notable changes of the `ai-delivery-workflow` plugin. Versions follow [seman
 
 ## 0.5.0 — unreleased
 
-Red-green-refactor (PR 10), rebased onto the 0.3.0 hardening. 0.4.0 is the specialist-agents PR; whichever of the two merges first, both entries stay.
+Red-green-refactor (PR 10), on top of 0.4.0 (specialist agents).
 
 ### Added
 - `red-green-refactor` skill: the builder requires the test-first cycle in every implementer prompt and checks the `TDD cycle` evidence of each lot report; the implementer applies it (failing test, minimal code, refactor).
 - Test-first gate: in the `build` and `feedback` phases, `PreToolUse` asks the user before a `git commit` that changes code without any test file, so only the user accepts a lot without tests.
+
+## 0.4.0 — unreleased
+
+Depends on 0.3.0 (audit hardening). Design: [ADR 0007](docs/architecture/decisions/0007-specialist-agents.md).
+
+### Added
+- `ui-ux-designer` builder subagent and `ui-ux-design` skill: lots marked `Kind: ui` in the plan, design system first, WCAG 2.1 AA, every state, responsive, i18n, visual evidence.
+- `security-architect` and `performance-architect` agents (architect subagents, also user-invocable) with the `security-design` and `performance-design` skills; they write `security.md` and `performance.md` with `SEC-n` and `PERF-n` requirements per lot, integrated into `plan.md` by the architect when the brief's `Concerns` line or the change calls for them.
+- Brief template: `Concerns` line and UX intent; plan template: UX intent, specialists consulted, `Kind` and security/performance requirements per lot.
+- Review: the reviewer checks `SEC-n` and `PERF-n` with the plan's severity, and a UI section of the baseline checklist on UI lots.
+- `dotnet-performance` skill (.NET projects only, [ADR 0008](docs/architecture/decisions/0008-stack-specific-performance-skills.md)): Tier A defaults for all .NET code and Tier B hot-path techniques under a `PERF-n`, each rule with its pitfalls, version and Microsoft Learn source; BenchmarkDotNet evidence; `.NET performance` line in the lot report and section in the review checklist.
+- Onboarding adds the read-only Microsoft Learn MCP server (`ms-learn`, `https://learn.microsoft.com/api/mcp`) on .NET projects (or with `--dotnet`); the architect, performance-architect, implementer, ui-ux-designer and reviewer get its tools.
+- Hooks: markers and role rules for the three new subagents (designer has the implementer's rights; each specialist writes only its own file; other subagents may not write those files; no shell writes to them).
+
+### Changed
+- Security and performance checklists moved from `solution-design` to the new skills.
 
 ## 0.3.1 — unreleased
 
