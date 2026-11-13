@@ -10,6 +10,14 @@ Red-green-refactor (PR 10), rebased onto the 0.3.0 hardening. 0.4.0 is the speci
 - `red-green-refactor` skill: the builder requires the test-first cycle in every implementer prompt and checks the `TDD cycle` evidence of each lot report; the implementer applies it (failing test, minimal code, refactor).
 - Test-first gate: in the `build` and `feedback` phases, `PreToolUse` asks the user before a `git commit` that changes code without any test file, so only the user accepts a lot without tests.
 
+## 0.3.1 — unreleased
+
+### Fixed (Windows)
+- Subagent markers whose file time is slightly ahead of `time.time()` (coarse Windows clock) were treated as stale, so the reviewer could be denied `review.md`; a 5 s clock skew is now tolerated (`marker_active`, heartbeat).
+- `state.json` edits on a file saved with CRLF line endings were not simulated when the edit used LF (exact replacement or patch), so legitimate edits were denied; matching now ignores the line ending.
+- Workflow paths are matched case-insensitively (`.AI\\Slug\\STATE.JSON`), as on Windows file systems.
+- Tests read `plugin.json` as UTF-8 explicitly; new `tests/test_windows_inputs.py` exercises Windows-style inputs on every OS.
+
 ## 0.3.0 — unreleased
 
 Hardening after the audit of 2026-11-13. Upgrade notes: see "Mise à jour" in `README.md`.
