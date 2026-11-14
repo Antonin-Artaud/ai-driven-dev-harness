@@ -1,6 +1,6 @@
 ---
 name: dotnet-performance
-description: '.NET performance and memory-efficiency rules of the ai-delivery-workflow, for the performance-architect, implementer, ui-ux-designer and reviewer on .NET projects: Tier A defaults for all .NET code (EF Core no-tracking reads, projections, no N+1, async all the way, source-generated logging and JSON, analyzers), Tier B hot-path techniques under a PERF-n requirement (Span, Memory, stackalloc, ArrayPool, ValueTask, SearchValues, Pipelines, SIMD), and BenchmarkDotNet evidence, each rule sourced from Microsoft documentation. Use only within this delivery workflow, when the project is .NET.'
+description: '.NET performance and memory-efficiency rules of the ai-driven-dev-harness, for the performance-architect, implementer, ui-ux-designer and reviewer on .NET projects: Tier A defaults for all .NET code (EF Core no-tracking reads, projections, no N+1, async all the way, source-generated logging and JSON, analyzers), Tier B hot-path techniques under a PERF-n requirement (Span, Memory, stackalloc, ArrayPool, ValueTask, SearchValues, Pipelines, SIMD), and BenchmarkDotNet evidence, each rule sourced from Microsoft documentation. Use only within this delivery workflow, when the project is .NET.'
 user-invocable: false
 ---
 

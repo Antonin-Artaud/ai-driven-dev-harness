@@ -1,6 +1,6 @@
 ---
 name: project-onboarding
-description: 'Onboard a repository to the ai-delivery-workflow: detect the Azure DevOps organization, project and repository from the git remote, create or merge .vscode/mcp.json (ado-read, ado-write), exclude .ai/ from git, optionally map the application into architecture docs (docs/architecture by default), and write the "AI delivery workflow" section of AGENTS.md (build, test and lint commands, base branch, architecture docs, glossary, skill map). Use when setting up the workflow in a new project, or when an agent reports a missing project contract.'
+description: 'Onboard a repository to the ai-driven-dev-harness: detect the Azure DevOps organization, project and repository from the git remote, create or merge .vscode/mcp.json (ado-read, ado-write), exclude .ai/ from git, optionally map the application into architecture docs (docs/architecture by default), and write the "AI delivery workflow" section of AGENTS.md (build, test and lint commands, base branch, architecture docs, glossary, skill map). Use when setting up the workflow in a new project, or when an agent reports a missing project contract.'
 argument-hint: 'Optional: base branch name, architecture docs folder'
 ---
 

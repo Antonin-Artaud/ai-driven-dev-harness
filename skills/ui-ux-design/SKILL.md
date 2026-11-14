@@ -1,6 +1,6 @@
 ---
 name: ui-ux-design
-description: 'UI lot procedure of the ai-delivery-workflow, for the ui-ux-designer subagent: implement one lot marked Kind ui in .ai/<slug>/plan.md, starting from the project''s design system, components and tokens, with WCAG 2.1 AA accessibility, responsive behaviour, every state designed (loading, empty, error, success, disabled), the project''s UX copy and i18n conventions, tests and visual evidence. Use only within this delivery workflow, when the builder delegates a UI lot.'
+description: 'UI lot procedure of the ai-driven-dev-harness, for the ui-ux-designer subagent: implement one lot marked Kind ui in .ai/<slug>/plan.md, starting from the project''s design system, components and tokens, with WCAG 2.1 AA accessibility, responsive behaviour, every state designed (loading, empty, error, success, disabled), the project''s UX copy and i18n conventions, tests and visual evidence. Use only within this delivery workflow, when the builder delegates a UI lot.'
 ---
 
 # UI and UX design

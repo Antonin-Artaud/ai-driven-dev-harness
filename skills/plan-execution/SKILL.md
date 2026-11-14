@@ -1,6 +1,6 @@
 ---
 name: plan-execution
-description: 'Stage 3 of the ai-delivery-workflow, for the builder and implementer agents: execute a validated .ai/<slug>/plan.md. Builder: check the hooks, orchestrate implementer and reviewer subagents lot by lot, run the bounded review loop, push and open the Azure Repos draft PR, resume an interrupted build. Implementer: code one lot with tests, commit it and report deviations. Use only within this delivery workflow, when acting as the builder or the implementer.'
+description: 'Stage 3 of the ai-driven-dev-harness, for the builder and implementer agents: execute a validated .ai/<slug>/plan.md. Builder: check the hooks, orchestrate implementer and reviewer subagents lot by lot, run the bounded review loop, push and open the Azure Repos draft PR, resume an interrupted build. Implementer: code one lot with tests, commit it and report deviations. Use only within this delivery workflow, when acting as the builder or the implementer.'
 user-invocable: false
 ---
 

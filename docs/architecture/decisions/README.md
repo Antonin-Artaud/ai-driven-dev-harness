@@ -12,3 +12,4 @@ One record per significant decision, numbered `0001`, `0002`..., written from th
 | [0006](./0006-validated-state-transitions.md) | Validated `state.json` transitions and hook-owned state |
 | [0007](./0007-specialist-agents.md) | Specialist agents: UI designer under the builder, security and performance under the architect |
 | [0008](./0008-stack-specific-performance-skills.md) | Stack-specific performance skills in two tiers, grounded in a documentation MCP server |
+| [0009](./0009-rename-ai-driven-dev-harness.md) | The plugin is renamed `ai-driven-dev-harness` |

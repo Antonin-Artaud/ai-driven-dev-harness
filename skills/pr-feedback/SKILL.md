@@ -1,6 +1,6 @@
 ---
 name: pr-feedback
-description: 'Feedback stage of the ai-delivery-workflow, for the builder agent: address the comments of the workflow''s Azure Repos draft PR (state.pull_request): triage them (fix, discuss, decline) and propose learnings for the user to validate, delegate the fixes to the implementer, re-review, push, then reply to each thread. Use only within this delivery workflow, after the "Address PR feedback" handoff.'
+description: 'Feedback stage of the ai-driven-dev-harness, for the builder agent: address the comments of the workflow''s Azure Repos draft PR (state.pull_request): triage them (fix, discuss, decline) and propose learnings for the user to validate, delegate the fixes to the implementer, re-review, push, then reply to each thread. Use only within this delivery workflow, after the "Address PR feedback" handoff.'
 user-invocable: false
 ---
 
