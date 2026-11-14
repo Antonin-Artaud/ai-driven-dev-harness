@@ -2,6 +2,15 @@
 
 All notable changes of the `ai-driven-dev-harness` plugin. Versions follow [semantic versioning](https://semver.org/); the version lives in `plugin.json`.
 
+## Unreleased — moved to GitHub
+
+### Changed
+- The repository moved from Azure Repos to GitHub: `plugin.json` `repository`, the install source and the `git clone` of the README point to <https://github.com/Antonin-Artaud/ai-driven-dev-harness>.
+- CI: GitHub Actions (`.github/workflows/ci.yml`) replaces `azure-pipelines.yml`, with the same jobs: tests on Ubuntu (Python 3.9 and 3.12), Windows and macOS, then ruff, mypy and coverage (minimum 80%). It also runs on pull requests.
+
+### Fixed
+- `usage.py`: `summarize` narrows the `agents` and `models` entries in a way mypy accepts (3 errors with a recent mypy).
+
 ## Unreleased — renamed to ai-driven-dev-harness
 
 Design: [ADR 0009](docs/architecture/decisions/0009-rename-ai-driven-dev-harness.md).

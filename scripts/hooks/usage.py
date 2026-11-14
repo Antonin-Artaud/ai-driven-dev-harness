@@ -1,4 +1,4 @@
-"""Token usage per agent of the ai-delivery-workflow, for the end-of-workflow cost table.
+"""Token usage per agent of the ai-driven-dev-harness, for the end-of-workflow cost table.
 
 Neither VS Code nor GitHub Copilot sends token counts in the hook payloads: the hooks only get the
 path of the session transcript (``transcript_path`` / ``transcriptPath``), whose format is not a
@@ -375,11 +375,15 @@ def summarize(usage: Dict[str, Any], pricing: Dict[str, Any]) -> Dict[str, Any]:
     """Rows per agent with tokens and estimated credits (``None`` when unknown); readable by a dashboard."""
     credit_usd = pricing.get("credit_usd", 0.01)
     rows: List[Dict[str, Any]] = []
-    agents = usage.get("agents") if isinstance(usage.get("agents"), dict) else {}
+    agents = usage.get("agents")
+    if not isinstance(agents, dict):
+        agents = {}
     for name, entry in agents.items():
         if not isinstance(entry, dict):
             continue
-        models = entry.get("models") if isinstance(entry.get("models"), dict) else {}
+        models = entry.get("models")
+        if not isinstance(models, dict):
+            models = {}
         usd: Optional[float] = 0.0
         unpriced: List[str] = []
         for model, bucket in models.items():

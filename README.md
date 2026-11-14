@@ -199,7 +199,7 @@ cd tests
 python -m unittest
 ```
 
-La CI `azure-pipelines.yml` lance ces tests sur Ubuntu (Python 3.9 et 3.12), Windows et macOS (Python 3.12) à chaque push sur `main`, plus un job de qualité : `ruff`, `mypy` et la couverture des scripts avec un seuil minimal. Pour la lancer sur les PR, ajoute ce pipeline comme **build validation** dans les policies de la branche `main` (Azure Repos ignore la clé `pr`).
+La CI GitHub Actions (`.github/workflows/ci.yml`) lance ces tests sur Ubuntu (Python 3.9 et 3.12), Windows et macOS (Python 3.12) à chaque push sur `main` et sur chaque pull request, plus un job de qualité : `ruff`, `mypy` et la couverture des scripts avec un seuil minimal.
 
 Couvert par les tests : décisions des hooks (payloads Local et Copilot), corpus de contournements (`tests/test_bypass_corpus.py`), transitions de `state.json`, clôture, journal, exécution des commandes de `hooks.json` dans un vrai shell, alias git, propriété de `review.md` et marqueur du reviewer, contrôles de review et d'archivage sur de vrais dépôts git temporaires, script d'onboarding (dont le squelette de la cartographie), cohérence des skills, des agents et des hooks.
 

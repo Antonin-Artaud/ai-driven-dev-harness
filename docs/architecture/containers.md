@@ -6,7 +6,7 @@ sources:
   - com.github.copilot/
   - skills/
   - scripts/hooks/
-  - azure-pipelines.yml
+  - .github/workflows/ci.yml
 ---
 # Containers
 
@@ -21,7 +21,7 @@ The units that make up the plugin and how they communicate (C4 level 2). Nothing
 | Close step | Python, standard library | Ends a workflow: `phase: done`, archive, `.ai/current` removed | `scripts/close_workflow.py` |
 | Onboarding script | Python, standard library | Sets up a target project (`.vscode/mcp.json`, `.git/info/exclude`, `docs/architecture/` skeleton) | `skills/project-onboarding/scripts/onboard.py` |
 | `.ai/` working files | Markdown and JSON in the target project, never committed | Workflow state and artifacts, hook state and decision log | `skills/delivery-workflow/SKILL.md` |
-| Test suite | `unittest` | Tests of the hooks, the onboarding script and the plugin structure | `tests/`, `azure-pipelines.yml` |
+| Test suite | `unittest` | Tests of the hooks, the onboarding script and the plugin structure | `tests/`, `.github/workflows/ci.yml` |
 
 ## Communication
 

@@ -32,7 +32,7 @@ Who uses the plugin, and which external systems it talks to (C4 level 1).
 | Azure DevOps remote MCP server | Reads work items, repos and wiki (`ado-read`); creates the draft PR and comments (`ado-write`) | `skills/azure-devops/SKILL.md`, `skills/project-onboarding/scripts/onboard.py` |
 | Microsoft Entra ID | Authenticates the MCP servers with the user's identity | `README.md`, `skills/azure-devops/SKILL.md` |
 | Git and the `origin` remote (Azure Repos) | Work branch `ai/<slug>`, push, review baseline | `skills/plan-execution/SKILL.md`, `scripts/hooks/workflow_gate.py`, `plugin.json` |
-| Azure Pipelines | Runs the plugin test suite | `azure-pipelines.yml` |
+| GitHub Actions | Runs the plugin test suite | `.github/workflows/ci.yml` |
 
 ```mermaid
 flowchart LR
@@ -44,5 +44,5 @@ flowchart LR
   plugin -->|git| repo[(Azure Repos)]
   ado --> repo
   reviewers([PR reviewers]) -->|comments| repo
-  repo -->|CI| pipelines[Azure Pipelines]
+  repo -->|CI| pipelines[GitHub Actions]
 ```
