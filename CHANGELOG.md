@@ -10,6 +10,13 @@ Red-green-refactor (PR 10), on top of 0.4.0 (specialist agents).
 - `red-green-refactor` skill: the builder requires the test-first cycle in every implementer prompt and checks the `TDD cycle` evidence of each lot report; the implementer applies it (failing test, minimal code, refactor).
 - Test-first gate: in the `build` and `feedback` phases, `PreToolUse` asks the user before a `git commit` that changes code without any test file, so only the user accepts a lot without tests.
 
+## Unreleased — cost per agent
+
+### Added
+- Cost table at the end of a workflow: the close step prints `usage_table`, one row per agent (model, runs, duration, input, cache read, cache write and output tokens, estimated GitHub AI credits) and the total; the builder shows it to the user. `scripts/usage_report.py` prints it at any time, for an active or archived workflow, in Markdown or JSON, and `--probe` lists the key structure of a transcript.
+- Hook-owned `.ai/<slug>/usage.json`: the `Stop`, `SubagentStart` and `SubagentStop` hooks read the session transcript (`transcript_path` / `transcriptPath`) and attribute each new model request to the agent that ran; requests are deduplicated by id. No figure is invented: without token counts in the transcript, only runs and durations are shown.
+- `scripts/hooks/pricing.json`: published GitHub Copilot rates per model (USD per 1M tokens, long-context tiers, 1 AI credit = $0.01), checked on 2026-11-14.
+
 ## 0.4.0 — unreleased
 
 Depends on 0.3.0 (audit hardening). Design: [ADR 0007](docs/architecture/decisions/0007-specialist-agents.md).

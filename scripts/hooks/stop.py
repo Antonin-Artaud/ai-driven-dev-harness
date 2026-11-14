@@ -9,7 +9,8 @@ PR (``record_thread`` in ``state.json``).
 Consecutive blocks are counted in ``.ai/<slug>/.hooks.json`` (``stop_blocks``): the hook blocks at
 most ``MAX_STOP_BLOCKS`` times in a row, then lets the stop through and logs it, so the agent can
 never loop forever. A user prompt or an allowed stop resets the count. The hook also removes the
-subagent markers, since no subagent runs once the main agent stops. Exceptions are logged to
+subagent markers, since no subagent runs once the main agent stops, and adds the requests of the
+turn to the main agent in ``usage.json`` (``usage.py``). Exceptions are logged to
 ``log.jsonl`` and let the stop through. Prints one JSON object; ``{}`` lets the agent stop.
 """
 
@@ -21,6 +22,7 @@ from typing import Any, Dict, Optional, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import usage  # noqa: E402
 import workflow_gate as wg  # noqa: E402
 
 Blocked = Optional[Tuple[str, str]]
@@ -47,6 +49,10 @@ def evaluate(hook: wg.HookInput) -> Blocked:
     workflow = wg.load_workflow(hook.cwd)
     if workflow is None:
         return None
+    try:
+        usage.record(workflow, "main-stop", hook.transcript, hook.agent)
+    except Exception as exc:  # noqa: BLE001 - usage is informative, never a reason to block
+        wg.log_event(workflow, "Stop", "", "error", f"usage: {exc!r}")
     for marker in workflow.markers():
         marker.unlink(missing_ok=True)
     wg.touch_heartbeat(workflow, "Stop")

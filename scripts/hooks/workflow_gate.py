@@ -11,9 +11,10 @@ Each hook writes exactly one JSON object to stdout. Decisions are written in bot
 Local (``hookSpecificOutput``) and the Copilot (top-level) formats, so the same script
 serves both harnesses.
 
-The hooks own three files under ``.ai/<slug>/`` that no agent may write: ``.hooks.json``
+The hooks own four kinds of files under ``.ai/<slug>/`` that no agent may write: ``.hooks.json``
 (heartbeat, time of the last user prompt, validation and escalation times), ``log.jsonl``
-(append-only decision log) and the subagent markers (``.reviewer-active``, ``.implementer-active``).
+(append-only decision log), ``usage.json`` (token usage per agent, ``usage.py``) and the subagent
+markers (``.reviewer-active``, ``.implementer-active``...).
 """
 
 from __future__ import annotations
@@ -62,6 +63,7 @@ CLOCK_SKEW = 5.0
 REVIEWER_MARKER_MAX_AGE = MARKER_MAX_AGE
 HOOK_STATE = ".hooks.json"
 LOG_FILE = "log.jsonl"
+USAGE_FILE = "usage.json"
 HEARTBEAT_INTERVAL = 60.0
 GIT_TIMEOUT = 4.0
 
@@ -71,7 +73,7 @@ _SLUG_RE = SLUG_RE
 RESERVED_SLUGS = frozenset({ARCHIVE_DIR})
 _NAME_RE = {name: re.compile(r"(?:^|[^a-z0-9])" + re.escape(name) + r"$") for name in SUBAGENTS}
 # Files under .ai/<any>/ that only the hooks write.
-HOOK_OWNED_FILES = frozenset({*(f".{name}-active" for name in SUBAGENTS), HOOK_STATE, LOG_FILE})
+HOOK_OWNED_FILES = frozenset({*(f".{name}-active" for name in SUBAGENTS), HOOK_STATE, LOG_FILE, USAGE_FILE})
 # review.md, state.json and the hook-owned files of any slug: never written from the shell.
 PROTECTED_PATH_RE = re.compile(
     r"(?:^|[^a-z0-9._-])\.ai/(?:current(?![a-z0-9._-])|[a-z0-9][a-z0-9._-]*/(?:review\.md|state\.json|security\.md|performance\.md|"
@@ -101,6 +103,7 @@ class HookInput:
     stop_hook_active: bool
     agent: str = ""
     agent_id: str = ""
+    transcript: str = ""
 
     @property
     def in_subagent(self) -> bool:
@@ -215,6 +218,7 @@ def parse_input(payload: Dict[str, Any]) -> HookInput:
     # Hooks fired inside a subagent carry agent_id and, when known, agent_type; Subagent* events carry agentName.
     agent = _first(payload, "agent_type", "agentType", "agent_name", "agentName")
     agent_id = _first(payload, "agent_id", "agentId")
+    transcript = _first(payload, "transcript_path", "transcriptPath")
     return HookInput(
         event=str(_first(payload, "hook_event_name", "hookEventName") or ""),
         tool_name=str(_first(payload, "tool_name", "toolName") or ""),
@@ -223,6 +227,7 @@ def parse_input(payload: Dict[str, Any]) -> HookInput:
         stop_hook_active=bool(_first(payload, "stop_hook_active", "stopHookActive")),
         agent=str(agent).strip() if agent is not None else "",
         agent_id=str(agent_id).strip() if agent_id is not None else "",
+        transcript=transcript.strip() if isinstance(transcript, str) else "",
     )
 
 
@@ -643,6 +648,17 @@ def ado_coordinates(root: Path) -> Optional[Dict[str, str]]:
 
 
 # --- outputs -------------------------------------------------------------------------------------
+
+
+def write_stdout(text: str) -> None:
+    """Write ``text`` to stdout as UTF-8 whatever the console code page (cp1252 on Windows)."""
+    stream = getattr(sys.stdout, "buffer", None)
+    if stream is None:
+        sys.stdout.write(text)
+    else:
+        sys.stdout.flush()
+        stream.write(text.encode("utf-8"))
+    sys.stdout.flush()
 
 
 def emit(payload: Dict[str, Any]) -> None:

@@ -25,7 +25,7 @@ You are the **builder** of the delivery workflow: you orchestrate, you do not co
 - Every implementer and ui-ux-designer prompt (lots and fix lots) requires the red-green-refactor cycle; send a lot back once when its report shows no failing test before the code.
 - Before building, check that the hooks run (fresh heartbeat in `.ai/<slug>/.hooks.json`, `plan-execution` skill); refuse to build otherwise.
 - At most 2 review iterations per cycle, then escalate (`phase: escalated` with an `escalation` reason). Increment `review_iterations` before each reviewer run.
-- Edit `state.json` with the file edit tools only, never from the shell. To continue an interrupted build, follow the resume procedure of the `plan-execution` skill. Once the user completed or abandoned the PR, propose the close step (`delivery-workflow` skill).
+- Edit `state.json` with the file edit tools only, never from the shell. To continue an interrupted build, follow the resume procedure of the `plan-execution` skill. Once the user completed or abandoned the PR, propose the close step (`delivery-workflow` skill), then show the user the `usage_table` it prints.
 - Never write or edit `review.md`: only the reviewer subagent does (a hook enforces it).
 - Never force push, publish the draft, enable autocomplete, bypass policies, modify work items or use the az CLI.
 - When a hook denies an action, read its reason and fix the precondition or escalate; do not work around it.

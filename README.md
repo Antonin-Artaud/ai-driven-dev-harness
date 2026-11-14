@@ -87,7 +87,25 @@ Dans les deux cas, le workspace doit être approuvé (*trusted*), sinon les hook
 4. Le **builder** fait implémenter les lots et relire la branche (2 itérations de review au maximum, sinon il te passe la main). Il pousse la branche, puis crée la PR draft liée au work item ; tu confirmes chacune de ces deux actions. Il archive ensuite le brief et le plan sur la PR dans le fil **🤖 Workflow record**.
 5. Relis la PR draft dans Azure DevOps et commente.
 6. De retour dans VS Code, clique sur **Address PR feedback**. Le builder passe en phase `triage`, classe les commentaires et propose des **learnings** : les règles réutilisables révélées par tes commentaires, à ajouter aux skills du projet, à ses instructions ou à `AGENTS.md`. **Tu valides le classement et chaque learning**, puis il corrige, commite les learnings à part (`docs(agents): …`), fait relire et répond à chaque fil. Un commentaire fait une fois n'a plus à être refait à la PR suivante.
-7. Publie la PR toi-même, puis demande au builder de **clore** le workflow (ou lance `python <plugin>/scripts/close_workflow.py --repo .`) : `phase` passe à `done`, `.ai/<slug>/` est archivé dans `.ai/archive/` et `.ai/current` est supprimé. Tu confirmes la clôture.
+7. Publie la PR toi-même, puis demande au builder de **clore** le workflow (ou lance `python <plugin>/scripts/close_workflow.py --repo .`) : `phase` passe à `done`, `.ai/<slug>/` est archivé dans `.ai/archive/` et `.ai/current` est supprimé. Tu confirmes la clôture. Le builder t'affiche ensuite le **coût par agent** (ci-dessous).
+
+## Coût par agent
+
+À la clôture, le builder affiche un tableau : pour chaque agent (challenger, architect, builder et chaque subagent), le modèle, le nombre d'exécutions, la durée, les tokens (entrée, cache lu, cache écrit, sortie) et une **estimation en crédits GitHub AI** (1 crédit = 0,01 $), suivi du total. Tu peux aussi l'afficher à tout moment, y compris pour un workflow archivé :
+
+```powershell
+python <plugin>/scripts/usage_report.py --repo .                 # workflow actif
+python <plugin>/scripts/usage_report.py --repo . --slug <slug>   # workflow archivé
+python <plugin>/scripts/usage_report.py --repo . --json          # même résumé en JSON
+```
+
+D'où viennent les chiffres : ni VS Code ni Copilot ne donnent la consommation dans les hooks, et GitHub ne détaille pas les crédits par requête. Les hooks lisent donc le transcript de la session (`transcript_path`) et attribuent les nouvelles requêtes à l'agent qui tournait : au subagent entre son `SubagentStart` et son `SubagentStop`, à l'agent principal de la phase sinon. Le tout est écrit dans `.ai/<slug>/usage.json` (hooks seuls). Les crédits sont calculés avec les tarifs publics de [GitHub](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing), recopiés dans `scripts/hooks/pricing.json` (date de relevé dans le fichier).
+
+Limites :
+- C'est une **estimation**, pas ta facture : le décompte exact est dans GitHub, *Billing > Metered usage*.
+- Le format du transcript n'est pas une API stable de VS Code. S'il ne contient pas de compteurs de tokens, le tableau l'indique et n'affiche que les exécutions et les durées, sans coût inventé. Lance alors `usage_report.py --probe <chemin du transcript>` : il liste la structure du fichier (les clés, jamais les valeurs) pour adapter le lecteur.
+- Un modèle absent de `pricing.json` (par exemple Gemini 3.1 Pro, non listé par GitHub) apparaît en `n/d` et le total devient un minimum (`≥`).
+- Des subagents lancés en parallèle partagent le transcript : leur répartition est approximative.
 
 ## Cartographie de l'application (`docs/architecture/`)
 
@@ -131,6 +149,7 @@ Les hooks n'agissent que dans un dépôt où un workflow est actif (`.ai/current
 | `.ai/<slug>/review.md` | Dernière review, avec dans l'en-tête `verdict`, `reviewed_sha`, `base_sha` et `iteration` |
 | `.ai/<slug>/pr-description.md`, `feedback.md` | Description de la PR draft, classement des commentaires et learnings |
 | `.ai/<slug>/.hooks.json`, `log.jsonl` | Écrits par les hooks seuls : heartbeat, heure de ton dernier message, journal des décisions |
+| `.ai/<slug>/usage.json` | Écrit par les hooks seuls : tokens par agent et par modèle, exécutions, durées (voir « Coût par agent ») |
 | `.ai/<slug>/.reviewer-active`, `.implementer-active` | Marqueurs écrits par les hooks pendant qu'un subagent tourne |
 | `.ai/archive/<slug>/` | Workflows clos |
 
@@ -168,6 +187,7 @@ En Local, le champ `model` de l'en-tête d'un agent s'applique aux subagents. Po
 | L'agent principal demande confirmation pour chaque fichier | Normal hors `escalated` : l'agent principal ne code pas. Si cela arrive pendant que l'implementer tourne, l'hôte n'envoie ni `agent_type` ni `agentName` (voir « Points à vérifier »). |
 | Un `git push` est refusé | La destination n'est pas `ai/<slug>`, une option force ou suppression est présente, ou la branche suivie pointe ailleurs (`git branch --unset-upstream`). |
 | Un fil de PR ne change pas de statut | Chaque changement de statut te demande confirmation ; le fil d'archivage ne change jamais de statut. |
+| Le tableau des coûts affiche `n/d` partout | Le transcript de VS Code ne contient pas de compteurs de tokens reconnus : lance `usage_report.py --probe <transcript>` (le chemin est dans `usage.json`, clé `transcripts`) et ouvre une demande avec sa sortie. |
 | Comprendre une décision d'un hook | Lis `.ai/<slug>/log.jsonl` : une ligne par décision, avec la raison, le HEAD et la phase. |
 | Workflow terminé mais les hooks agissent encore | Clos-le : `python <plugin>/scripts/close_workflow.py --repo .` |
 | `onboard.py` sort avec le code 3 | `ado-read` ou `ado-write` existent déjà avec une autre définition : compare, puis relance avec `--force`. |
