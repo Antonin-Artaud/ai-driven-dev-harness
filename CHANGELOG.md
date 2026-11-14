@@ -2,6 +2,13 @@
 
 All notable changes of the `ai-delivery-workflow` plugin. Versions follow [semantic versioning](https://semver.org/); the version lives in `plugin.json`.
 
+## Unreleased — cost per agent
+
+### Added
+- Cost table at the end of a workflow: the close step prints `usage_table`, one row per agent (model, runs, duration, input, cache read, cache write and output tokens, estimated GitHub AI credits) and the total; the builder shows it to the user. `scripts/usage_report.py` prints it at any time, for an active or archived workflow, in Markdown or JSON, and `--probe` lists the key structure of a transcript.
+- Hook-owned `.ai/<slug>/usage.json`: the `Stop`, `SubagentStart` and `SubagentStop` hooks read the session transcript (`transcript_path` / `transcriptPath`) and attribute each new model request to the agent that ran; requests are deduplicated by id. No figure is invented: without token counts in the transcript, only runs and durations are shown.
+- `scripts/hooks/pricing.json`: published GitHub Copilot rates per model (USD per 1M tokens, long-context tiers, 1 AI credit = $0.01), checked on 2026-11-14.
+
 ## 0.4.0 — unreleased
 
 Depends on 0.3.0 (audit hardening). Design: [ADR 0007](docs/architecture/decisions/0007-specialist-agents.md).

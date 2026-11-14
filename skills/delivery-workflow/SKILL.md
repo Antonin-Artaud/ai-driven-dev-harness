@@ -37,6 +37,7 @@ All workflow files live under `.ai/` at the repository root. They are excluded f
 | `.ai/<slug>/.<subagent>-active` | hooks | Present while that subagent runs (reviewer, implementer, ui-ux-designer, security-architect, performance-architect) |
 | `.ai/<slug>/.hooks.json` | hooks | Heartbeat, time of the user's last prompt, validation and escalation times, Stop block count |
 | `.ai/<slug>/log.jsonl` | hooks | Append-only log of the hook decisions |
+| `.ai/<slug>/usage.json` | hooks | Tokens per agent and model, runs and durations, read from the session transcript (cost table) |
 | `.ai/archive/<slug>/` | close step | Closed workflows, kept for the learnings of later PRs |
 
 No agent writes the hook-owned files. Since `.ai/` is not committed, the builder archives `brief.md` and `plan.md` on the draft PR as the **workflow record** thread (`azure-devops` skill).
@@ -90,6 +91,8 @@ Escalate whenever you stop for a decision you cannot make yourself (review limit
 ### Close step
 
 Once the user completed or abandoned the PR (or abandons the workflow), close it with `python <plugin>/scripts/close_workflow.py --repo . --reason "<why>"` (`python3` on Linux and macOS; `<plugin>` is the folder two levels above this skill). The hook asks the user to confirm. The script sets `phase: done`, moves `.ai/<slug>/` to `.ai/archive/<slug>/` and removes `.ai/current`. Nobody edits `state.json` by hand to close a workflow.
+
+Its JSON output carries `usage_table`: the cost of each agent (tokens and estimated GitHub AI credits) as a Markdown table followed by its notes. Show it to the user as is, table and notes, without recomputing, rounding or completing any figure: `n/d` stays `n/d`. The same table is available at any time with `python <plugin>/scripts/usage_report.py --repo .` (add `--slug <slug>` for an archived workflow).
 
 ## Triage paths
 

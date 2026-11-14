@@ -12,7 +12,7 @@ The hooks (`com.github.copilot/hooks/hooks.json`, scripts in `scripts/hooks/`) o
 | `.ai/<slug>/review.md` | the reviewer subagent only | file edit tools; `iteration` must equal `review_iterations` (1 or 2) |
 | `.ai/<slug>/security.md`, `performance.md` | the security-architect, the performance-architect (or the main agent when the user runs the specialist directly) | file edit tools; denied to every other subagent |
 | `.ai/current` | challenger, close step | cannot switch away while the workflow is in `build`, `pr-open`, `triage` or `feedback` |
-| `.ai/<slug>/.hooks.json`, `log.jsonl`, `.<subagent>-active` markers | the hooks only | never written by an agent |
+| `.ai/<slug>/.hooks.json`, `log.jsonl`, `usage.json`, `.<subagent>-active` markers | the hooks only | never written by an agent |
 
 None of these files is ever written from the shell (`>`, `Set-Content`, `cp`, `sed -i`, `python -c` ...).
 

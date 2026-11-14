@@ -75,7 +75,7 @@ jobs:
           ruff format --check .
         displayName: Ruff (ruff.toml)
 
-      - script: mypy scripts/hooks scripts/close_workflow.py skills/project-onboarding/scripts/onboard.py
+      - script: mypy scripts/hooks scripts/close_workflow.py scripts/usage_report.py skills/project-onboarding/scripts/onboard.py
         displayName: Mypy (mypy.ini)
 
       # Hooks run as subprocesses are measured through tests/sitecustomize.py.

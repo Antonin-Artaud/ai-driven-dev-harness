@@ -6,6 +6,7 @@ sources:
   - scripts/hooks/workflow_gate.py
   - scripts/hooks/state_policy.py
   - scripts/close_workflow.py
+  - scripts/hooks/usage.py
   - skills/project-onboarding/scripts/onboard.py
 ---
 # Data
@@ -23,6 +24,7 @@ The plugin has no database. Its state lives in files of the target project.
 | `.ai/<slug>/review.md` | Latest review; its front matter is read by the hooks | no | reviewer | `skills/code-review/SKILL.md` |
 | `.ai/<slug>/.hooks.json` | Heartbeat (time, plugin version), `user_prompt_at`, `written_at` and `validated_at` per artifact, `escalated_at`, `untracked_baseline`, `stop_blocks` | no | hooks only | `scripts/hooks/workflow_gate.py`, `state_policy.py`, `user_prompt.py`, `stop.py` |
 | `.ai/<slug>/log.jsonl` | One JSON line per hook decision: `at`, `hook`, `tool`, `decision`, `reason`, `head`, `phase` | no | hooks only (append-only) | `log_event` in `scripts/hooks/workflow_gate.py` |
+| `.ai/<slug>/usage.json` | Token usage per agent (schema below) | no | hooks only (`Stop`, `SubagentStart`, `SubagentStop`) | `scripts/hooks/usage.py` |
 | `.ai/<slug>/.<subagent>-active` | Subagent markers (reviewer, implementer, ui-ux-designer, security-architect, performance-architect) | no | hooks only | `scripts/hooks/subagent.py` |
 | `.ai/archive/<slug>/` | Closed workflows | no | close step | `scripts/close_workflow.py` |
 | `.vscode/mcp.json` | `ado-read` and `ado-write` declarations | excluded when created by the script and untracked | `onboard.py` | `skills/project-onboarding/scripts/onboard.py` |
@@ -84,3 +86,20 @@ The hooks read `verdict` (`APPROVED` or `CHANGES_REQUESTED`), `reviewed_sha` (mu
 - `.ai/` artifacts can copy work item content (description, acceptance criteria, comments). They stay local and are never committed (`skills/delivery-workflow/SKILL.md`).
 - `onboard.py` strips credentials from the remote URL before printing it (`redact_remote`).
 - The architecture map holds no secrets or internal URLs (`skills/architecture-mapping/SKILL.md`).
+
+## `usage.json` model
+
+Written by the hooks only (`scripts/hooks/usage.py`), read by `scripts/usage_report.py` and by any read-only tool such as a dashboard. Credits are not stored: they are computed at report time from `scripts/hooks/pricing.json`, so a rate change applies to past workflows too (`usage_report.py --json` gives the computed summary).
+
+| Field | Content |
+|---|---|
+| `version` | `1` |
+| `updated_at` | ISO time of the last write |
+| `agents.<name>` | One entry per agent: `challenger`, `architect`, `builder`, a workflow subagent, or another subagent by its name |
+| `agents.<name>.runs`, `turns` | Subagent launches (`SubagentStop`); main agent turns (`Stop`) |
+| `agents.<name>.duration_s` | Total run time of a subagent, from its marker |
+| `agents.<name>.requests` | Model requests attributed to the agent |
+| `agents.<name>.models.<model>` | `requests`, `input`, `cached_input`, `cache_write`, `output` (tokens; `input` excludes cached and cache-write tokens), and `long_context_requests` (requests above 100K prompt tokens, priced at the long-context rate when their model has one) |
+| `transcripts.<path>` | Read cursor of each transcript: `offset`, `seen` (request ids already counted), `read_at` |
+| `missing_transcript` | Hook events that carried no transcript path |
+

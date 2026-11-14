@@ -72,8 +72,10 @@ Precedence rule: the target project's skills win over the plugin's, and the plug
 | `pre_tool_use.py` | `PreToolUse` entry point: shell commands (git push, az, HTTP, wrappers, launchers, interpreters), Azure DevOps MCP tools, then `state_policy` for file edits | `scripts/hooks/pre_tool_use.py` |
 | `stop.py` | Review gate (`build`, `feedback`) and record gate (`pr-open`), consecutive block count | `scripts/hooks/stop.py` |
 | `user_prompt.py` | `UserPromptSubmit`: time of the user's last prompt, heartbeat | `scripts/hooks/user_prompt.py` |
-| `subagent.py` | `SubagentStart` / `SubagentStop`: reviewer and implementer markers | `scripts/hooks/subagent.py` |
-| `close_workflow.py` | Close step: `phase: done`, archive, clear `.ai/current` (run by the builder or the user) | `scripts/close_workflow.py` |
+| `subagent.py` | `SubagentStart` / `SubagentStop`: subagent markers, usage attribution | `scripts/hooks/subagent.py` |
+| `usage.py` | Token usage per agent read from the session transcript (`usage.json`), pricing (`pricing.json`), cost table | `scripts/hooks/usage.py` |
+| `close_workflow.py` | Close step: `phase: done`, archive, clear `.ai/current` (run by the builder or the user), cost table | `scripts/close_workflow.py` |
+| `usage_report.py` | Cost table of an active or archived workflow (Markdown or JSON), transcript probe | `scripts/usage_report.py` |
 
 Allowed dependencies: every hook imports `workflow_gate.py`; `pre_tool_use.py` also imports `state_policy.py`; nothing outside the Python standard library ([ADR 0003](./decisions/0003-standard-library-python-hooks.md)).
 
