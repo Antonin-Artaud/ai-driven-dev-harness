@@ -25,7 +25,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          # Python 3.9 is the minimum supported version; setup-python has no 3.9 build for
+          # Ubuntu 26.04 (ubuntu-latest), so this job stays on 24.04.
+          - os: ubuntu-24.04
             python: '3.9'
           - os: ubuntu-latest
             python: '3.12'
@@ -34,9 +36,9 @@ jobs:
           - os: macos-latest
             python: '3.12'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
 
@@ -56,9 +58,9 @@ jobs:
       COVERAGE_PROCESS_START: ${{ github.workspace }}/.coveragerc
       PYTHONPATH: ${{ github.workspace }}/tests
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
