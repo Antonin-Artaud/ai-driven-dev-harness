@@ -249,7 +249,7 @@ class StatePolicyTestCase(unittest.TestCase):
         plan = {"filePath": f".ai/{SLUG}/plan.md", "content": "# plan\n"}
         source = {"filePath": "src/app.py", "content": "x = 1\n"}
         as_security = {"agent_id": "a1", "agent_type": "security-architect"}
-        as_performance = {"agent_id": "a2", "agent_type": "ai-delivery-workflow:performance-architect"}
+        as_performance = {"agent_id": "a2", "agent_type": "ai-driven-dev-harness:performance-architect"}
         self.assertEqual(self.evaluate("create_file", security, **as_security)[0], None)
         self.assertEqual(self.evaluate("create_file", performance, **as_performance)[0], None)
         for args, who in (

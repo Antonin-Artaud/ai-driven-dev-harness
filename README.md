@@ -1,4 +1,4 @@
-# ai-delivery-workflow
+# ai-driven-dev-harness
 
 Plugin d'agents (format [Agent Plugins 1.0](https://agent-plugins.org/)) pour VS Code et GitHub Copilot. Il transforme une demande (prompt, spec ou work item Azure DevOps) en **PR draft Azure Repos** relue. Le parcours passe par un challenge du besoin métier, un plan d'architecture qui part de la cartographie du projet, une implémentation qui suit le plan et met cette cartographie à jour, et une review indépendante fondée sur les skills du projet.
 
@@ -47,14 +47,14 @@ Source : [Antonin-Artaud / ai-driven-dev-harness](https://github.com/Antonin-Art
 **Option 1 (recommandée pendant la mise au point) : clone local.** Clone le dépôt, puis déclare-le dans les paramètres utilisateur de VS Code (`settings.json`). Une modification du plugin est alors prise en compte sans réinstallation.
 
 ```powershell
-git clone "https://github.com/Antonin-Artaud/ai-driven-dev-harness.git" <dossier-des-plugins>\ai-delivery-workflow
+git clone "https://github.com/Antonin-Artaud/ai-driven-dev-harness.git" <dossier-des-plugins>\ai-driven-dev-harness
 ```
 
 ```jsonc
 {
   "chat.plugins.enabled": true,
   "chat.pluginLocations": {
-    "<dossier-des-plugins>/ai-delivery-workflow": true
+    "<dossier-des-plugins>/ai-driven-dev-harness": true
   },
   "chat.useHooks": true
 }
@@ -176,7 +176,8 @@ En Local, le champ `model` de l'en-tête d'un agent s'applique aux subagents. Po
 1. Termine ou clos les workflows en cours avant de changer de version : un `state.json` écrit par une version antérieure peut ne pas respecter les nouvelles règles de transition.
 2. Clone local : `git pull` dans le dossier du plugin, puis recharge la fenêtre VS Code. Installation depuis la source : réinstalle le plugin.
 3. Lis le [CHANGELOG](CHANGELOG.md). En passant de 0.2.0 à 0.3.0 : les validations du brief et du plan sont désormais des champs de `state.json` (`brief_validated`, `plan_validated`), la clôture passe par `scripts/close_workflow.py`, et un nouveau hook `UserPromptSubmit` est déclaré.
-4. Vérifie que la version affichée dans `.ai/<slug>/.hooks.json` (`heartbeat.version`) est la nouvelle.
+4. Depuis `ai-delivery-workflow` (avant le renommage) : le plugin s'appelle désormais `ai-driven-dev-harness`. Désinstalle l'ancien plugin ou retire son entrée de `chat.pluginLocations`, puis installe le nouveau. Les dossiers `.ai/`, le skill `delivery-workflow` et la section « AI delivery workflow » d'`AGENTS.md` ne changent pas : les projets déjà onboardés n'ont rien à refaire.
+5. Vérifie que la version affichée dans `.ai/<slug>/.hooks.json` (`heartbeat.version`) est la nouvelle.
 
 ## Dépannage
 
@@ -199,7 +200,7 @@ cd tests
 python -m unittest
 ```
 
-La CI `azure-pipelines.yml` lance ces tests sur Ubuntu (Python 3.9 et 3.12), Windows et macOS (Python 3.12) à chaque push sur `main`, plus un job de qualité : `ruff`, `mypy` et la couverture des scripts avec un seuil minimal. Pour la lancer sur les PR, ajoute ce pipeline comme **build validation** dans les policies de la branche `main` (Azure Repos ignore la clé `pr`).
+La CI GitHub Actions (`.github/workflows/ci.yml`) lance ces tests sur Ubuntu (Python 3.9 et 3.12), Windows et macOS (Python 3.12) à chaque push sur `main` et sur chaque pull request, plus un job de qualité : `ruff`, `mypy` et la couverture des scripts avec un seuil minimal.
 
 Couvert par les tests : décisions des hooks (payloads Local et Copilot), corpus de contournements (`tests/test_bypass_corpus.py`), transitions de `state.json`, clôture, journal, exécution des commandes de `hooks.json` dans un vrai shell, alias git, propriété de `review.md` et marqueur du reviewer, contrôles de review et d'archivage sur de vrais dépôts git temporaires, script d'onboarding (dont le squelette de la cartographie), cohérence des skills, des agents et des hooks.
 

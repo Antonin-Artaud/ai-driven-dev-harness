@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PreToolUse policy of the ai-delivery-workflow plugin.
+"""PreToolUse policy of the ai-driven-dev-harness plugin.
 
 Acts only in a git repository with an active workflow (``.ai/current`` present and phase not
 ``done``). The rules are listed once, in skills/delivery-workflow/references/gates.md. In short:

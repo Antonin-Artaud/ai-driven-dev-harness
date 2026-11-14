@@ -1,6 +1,6 @@
 ---
 name: business-challenge
-description: 'Stage 1 of the ai-delivery-workflow, for the challenger agent: challenge the business need behind a prompt, a spec or an Azure DevOps work item before any design (intake, fast/standard/feature triage, 5 whys, jobs-to-be-done, pre-mortem, simpler alternatives, Given/When/Then acceptance criteria, Definition of Ready) and write .ai/<slug>/brief.md. Use only within this delivery workflow, when acting as the challenger.'
+description: 'Stage 1 of the ai-driven-dev-harness, for the challenger agent: challenge the business need behind a prompt, a spec or an Azure DevOps work item before any design (intake, fast/standard/feature triage, 5 whys, jobs-to-be-done, pre-mortem, simpler alternatives, Given/When/Then acceptance criteria, Definition of Ready) and write .ai/<slug>/brief.md. Use only within this delivery workflow, when acting as the challenger.'
 user-invocable: false
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: security-design
-description: 'Security analysis step of the ai-delivery-workflow, for the security-architect agent: from a validated .ai/<slug>/brief.md and the draft plan.md, identify assets, trust boundaries and threats (STRIDE), choose mitigations that fit the existing code, turn them into concrete requirements per lot and record the residual risk in .ai/<slug>/security.md. Use only within this delivery workflow, when the architect consults the security-architect or the user asks it to analyse a plan.'
+description: 'Security analysis step of the ai-driven-dev-harness, for the security-architect agent: from a validated .ai/<slug>/brief.md and the draft plan.md, identify assets, trust boundaries and threats (STRIDE), choose mitigations that fit the existing code, turn them into concrete requirements per lot and record the residual risk in .ai/<slug>/security.md. Use only within this delivery workflow, when the architect consults the security-architect or the user asks it to analyse a plan.'
 ---
 
 # Security design

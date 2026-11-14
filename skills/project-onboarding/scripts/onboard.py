@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic part of the ai-delivery-workflow project onboarding.
+"""Deterministic part of the ai-driven-dev-harness project onboarding.
 
 * Detects the Azure DevOps organization, project and repository from the ``origin`` remote.
 * Detects the base branch.
@@ -310,7 +310,7 @@ def ensure_excluded(root: Path, entries: Sequence[str], dry_run: bool) -> Dict[s
     missing = [entry for entry in entries if entry.lstrip("/").rstrip("/") not in present]
     if missing and not dry_run:
         path.parent.mkdir(parents=True, exist_ok=True)
-        content = "# ai-delivery-workflow\n" + "\n".join(missing) + "\n"
+        content = "# ai-driven-dev-harness\n" + "\n".join(missing) + "\n"
         try:
             original = path.read_bytes()
         except OSError:
@@ -365,7 +365,7 @@ def print_json(data: Any) -> None:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="Onboard a repository to the ai-delivery-workflow.")
+    parser = argparse.ArgumentParser(description="Onboard a repository to the ai-driven-dev-harness.")
     parser.add_argument("--repo", default=".", help="Path inside the git repository (default: current directory).")
     parser.add_argument("--base-branch", help="Override the detected base branch.")
     parser.add_argument("--dry-run", action="store_true", help="Show what would change without writing anything.")

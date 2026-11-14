@@ -2,7 +2,7 @@
 
 ## AI delivery workflow
 
-<!-- Project contract read by the ai-delivery-workflow agents. Keep it short and factual. -->
+<!-- Project contract read by the ai-driven-dev-harness agents. Keep it short and factual. -->
 
 ### Commands
 | Purpose | Command |
@@ -14,7 +14,7 @@
 
 ### Repository
 - Base branch: `main`
-- Azure DevOps: organization `<org>`, project `<project>`, repository `ai-delivery-workflow`
+- Hosting: GitHub, `Antonin-Artaud/ai-driven-dev-harness` (the workflow's Azure Repos draft PR step does not apply to this repository yet)
 - Work branches: `ai/<slug>`
 
 ### Architecture docs

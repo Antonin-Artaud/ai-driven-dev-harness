@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: 'Review step of the ai-delivery-workflow, for the reviewer subagent: independent review of the work branch (merge-base..HEAD) against .ai/<slug>/brief.md, plan.md and the project''s own review skills, with baseline checklists as fallback; writes .ai/<slug>/review.md with severity-ranked findings, a verdict, the reviewed commit and the iteration. Use only within this delivery workflow, when acting as the reviewer.'
+description: 'Review step of the ai-driven-dev-harness, for the reviewer subagent: independent review of the work branch (merge-base..HEAD) against .ai/<slug>/brief.md, plan.md and the project''s own review skills, with baseline checklists as fallback; writes .ai/<slug>/review.md with severity-ranked findings, a verdict, the reviewed commit and the iteration. Use only within this delivery workflow, when acting as the reviewer.'
 user-invocable: false
 ---
 

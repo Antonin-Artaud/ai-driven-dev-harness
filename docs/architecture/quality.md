@@ -4,7 +4,7 @@ verified_on: 2026-11-13
 sources:
   - scripts/hooks/
   - com.github.copilot/hooks/hooks.json
-  - azure-pipelines.yml
+  - .github/workflows/ci.yml
   - ruff.toml
   - mypy.ini
   - .coveragerc
@@ -26,7 +26,7 @@ The limits and reliability mechanisms present in the code. No performance target
 | Heartbeat | refreshed at most once a minute; stale after 10 minutes for the builder | `HEARTBEAT_INTERVAL`, `plan-execution` skill |
 | Challenger questions per round | 5 | `com.github.copilot/agents/challenger.agent.md` |
 | Lot size | about 300 changed lines | `skills/solution-design/SKILL.md` |
-| Python | 3.9 minimum | `README.md`, `azure-pipelines.yml` |
+| Python | 3.9 minimum | `README.md`, `.github/workflows/ci.yml` |
 
 ## Reliability
 
@@ -39,9 +39,9 @@ The limits and reliability mechanisms present in the code. No performance target
 
 ## Observability
 
-Every denial carries the `[ai-delivery-workflow]` prefix and a reason readable by the agent and the user (`LOG_PREFIX`). Every decision, Stop block or release, subagent start and stop, close, hook error and web tool call is appended to `.ai/<slug>/log.jsonl` with credentials redacted (`log_event`, `redact` in `scripts/hooks/workflow_gate.py`). The heartbeat in `.ai/<slug>/.hooks.json` shows that the hooks run and which plugin version runs them. No metrics.
+Every denial carries the `[ai-driven-dev-harness]` prefix and a reason readable by the agent and the user (`LOG_PREFIX`). Every decision, Stop block or release, subagent start and stop, close, hook error and web tool call is appended to `.ai/<slug>/log.jsonl` with credentials redacted (`log_event`, `redact` in `scripts/hooks/workflow_gate.py`). The heartbeat in `.ai/<slug>/.hooks.json` shows that the hooks run and which plugin version runs them. No metrics.
 
 ## Tests and CI
 
 - `python -m unittest` in `tests/`: hook decisions on real temporary git repositories, the table-driven bypass corpus (`tests/test_bypass_corpus.py`), `state.json` transitions (`tests/test_state_policy.py`), close step, log and heartbeat, a smoke test that runs every `hooks.json` command through a shell, the onboarding script and the plugin structure.
-- Azure Pipelines runs the suite on Ubuntu (Python 3.9 and 3.12), Windows and macOS (Python 3.12) on every push to `main` (`azure-pipelines.yml`). A quality job runs `ruff check` and `ruff format --check` (`ruff.toml`), `mypy` (`mypy.ini`; mypy needs Python ≥ 3.10 to run, Python 3.9 compatibility is checked by the 3.9 test job) and the suite under `coverage` with a minimum of 80% on `scripts/` and `onboard.py`, hook subprocesses included (`.coveragerc`, `tests/sitecustomize.py`). Azure Repos ignores the pipeline's `pr` key, so the pipeline is set as a build validation policy on `main` to run on pull requests (confirmed by the project owner; the policy lives in Azure DevOps, not in the code).
+- GitHub Actions runs the suite on Ubuntu (Python 3.9 and 3.12), Windows and macOS (Python 3.12) on every push to `main` and on every pull request (`.github/workflows/ci.yml`). A quality job runs `ruff check` and `ruff format --check` (`ruff.toml`), `mypy` (`mypy.ini`; mypy needs Python ≥ 3.10 to run, Python 3.9 compatibility is checked by the 3.9 test job) and the suite under `coverage` with a minimum of 80% on `scripts/` and `onboard.py`, hook subprocesses included (`.coveragerc`, `tests/sitecustomize.py`). Azure Repos ignores the pipeline's `pr` key, so the pipeline is set as a build validation policy on `main` to run on pull requests (confirmed by the project owner; the policy lives in Azure DevOps, not in the code).

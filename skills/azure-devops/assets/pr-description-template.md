@@ -17,4 +17,4 @@
 
 Full brief and plan: see the 🤖 Workflow record thread.
 
-> 🤖 Draft prepared by the ai-delivery-workflow. The author reviews it and publishes it.
+> 🤖 Draft prepared by the ai-driven-dev-harness. The author reviews it and publishes it.

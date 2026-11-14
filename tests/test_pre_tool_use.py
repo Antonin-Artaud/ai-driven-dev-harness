@@ -219,7 +219,7 @@ class PreToolUseTestCase(unittest.TestCase):
     def test_reviewer_can_write_review(self) -> None:
         self.repo.write_workflow(phase="build", review_iterations=1)
         self.assertEqual(self.review_edit(agent_id="a1", agent_type="reviewer")[0], None)
-        self.assertEqual(self.review_edit(agentId="a1", agentType="ai-delivery-workflow:reviewer")[0], None)
+        self.assertEqual(self.review_edit(agentId="a1", agentType="ai-driven-dev-harness:reviewer")[0], None)
         (self.repo.path / ".ai" / "1234-demo" / ".reviewer-active").write_text("1\n", encoding="utf-8")
         self.assertEqual(self.review_edit()[0], None, "marker fallback when the harness sends no agent type")
         self.assertEqual(self.review_edit(agent_id="a1")[0], None)

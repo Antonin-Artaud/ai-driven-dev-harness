@@ -132,7 +132,7 @@ class HookAttributionTestCase(unittest.TestCase):
 
     def test_requests_go_to_the_agent_that_ran(self) -> None:
         self.append(anthropic_line("b1", "claude-sonnet-5-5", 100, 0, 1000, 50))
-        self.subagent("start", "ai-delivery-workflow:implementer")
+        self.subagent("start", "ai-driven-dev-harness:implementer")
         self.append(anthropic_line("i1", "claude-sonnet-5-5", 10, 1000, 0, 500))
         self.append(anthropic_line("i2", "claude-sonnet-5-5", 10, 1500, 0, 700))
         self.subagent("stop", "implementer")

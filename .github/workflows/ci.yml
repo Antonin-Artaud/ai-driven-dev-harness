@@ -1,0 +1,93 @@
+# Runs the plugin test suite (hooks, onboarding script, plugin structure) on every push to main
+# and on pull requests, plus a quality job: ruff (lint and format), mypy, and a coverage report of
+# the scripts with a minimum threshold.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Python 3.9 is the minimum supported version; setup-python has no 3.9 build for
+          # Ubuntu 26.04 (ubuntu-latest), so this job stays on 24.04.
+          - os: ubuntu-24.04
+            python: '3.9'
+          - os: ubuntu-latest
+            python: '3.12'
+          - os: windows-latest
+            python: '3.12'
+          - os: macos-latest
+            python: '3.12'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Show tool versions
+        run: |
+          python --version
+          git --version
+
+      - name: Run unit tests
+        working-directory: tests
+        run: python -m unittest -v
+
+  quality:
+    name: Lint, types and coverage
+    runs-on: ubuntu-latest
+    env:
+      COVERAGE_PROCESS_START: ${{ github.workspace }}/.coveragerc
+      PYTHONPATH: ${{ github.workspace }}/tests
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      # CI-only tools: the plugin itself stays standard library only (ADR 0003).
+      - name: Install ruff, mypy and coverage
+        run: python -m pip install --disable-pip-version-check "ruff>=0.6" "mypy>=1.11" "coverage>=7.4"
+
+      - name: Ruff (ruff.toml)
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Mypy (mypy.ini)
+        run: mypy scripts/hooks scripts/close_workflow.py scripts/usage_report.py skills/project-onboarding/scripts/onboard.py
+
+      # Hooks run as subprocesses are measured through tests/sitecustomize.py.
+      - name: Tests with coverage (minimum 80%)
+        run: |
+          python -m coverage run -m unittest discover -s tests -t tests
+          python -m coverage combine
+          python -m coverage report --fail-under=80
+          python -m coverage xml -o coverage.xml
+
+      - name: Upload the coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.xml
+          if-no-files-found: ignore

@@ -1,6 +1,6 @@
 ---
 name: red-green-refactor
-description: 'Test-driven development discipline of the ai-delivery-workflow, for the builder and the implementer: red (write one failing test and watch it fail for the right reason), green (the minimal code that makes it pass), refactor (clean up with the suite green), one behavior at a time, with the red and green evidence reported per lot. Use only within this delivery workflow, when implementing or briefing a lot or a fix lot, or checking that a lot report proves the test came first.'
+description: 'Test-driven development discipline of the ai-driven-dev-harness, for the builder and the implementer: red (write one failing test and watch it fail for the right reason), green (the minimal code that makes it pass), refactor (clean up with the suite green), one behavior at a time, with the red and green evidence reported per lot. Use only within this delivery workflow, when implementing or briefing a lot or a fix lot, or checking that a lot report proves the test came first.'
 user-invocable: false
 ---
 

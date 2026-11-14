@@ -1,6 +1,6 @@
 ---
 name: solution-design
-description: 'Stage 2 of the ai-delivery-workflow, for the architect agent: turn a validated .ai/<slug>/brief.md into .ai/<slug>/plan.md, starting from the project''s architecture docs, comparing 2-3 options, challenging the user''s technical vision with design, security, performance, testing and reliability checklists, recording an ADR and the documentation impact, split into lots. Use only within this delivery workflow, when acting as the architect.'
+description: 'Stage 2 of the ai-driven-dev-harness, for the architect agent: turn a validated .ai/<slug>/brief.md into .ai/<slug>/plan.md, starting from the project''s architecture docs, comparing 2-3 options, challenging the user''s technical vision with design, security, performance, testing and reliability checklists, recording an ADR and the documentation impact, split into lots. Use only within this delivery workflow, when acting as the architect.'
 user-invocable: false
 ---
 
