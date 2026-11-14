@@ -14,7 +14,7 @@
 
 ### Repository
 - Base branch: `main`
-- Azure DevOps: organization `<org>`, project `<project>`, repository `ai-delivery-workflow`
+- Hosting: GitHub, `Antonin-Artaud/ai-driven-dev-harness` (the workflow's Azure Repos draft PR step does not apply to this repository yet)
 - Work branches: `ai/<slug>`
 
 ### Architecture docs
