@@ -2,11 +2,13 @@
 """PreToolUse policy of the ai-driven-dev-harness plugin.
 
 Acts only in a git repository with an active workflow (``.ai/current`` present and phase not
-``done``). The rules are listed once, in docs/architecture/security.md. In short:
+``done``). The rules are listed once, in skills/delivery-workflow/references/gates.md. In short:
 
 * file edits: state.json transitions, review.md ownership and role boundaries (``state_policy``);
 * shell commands: ``git push`` asks and only targets ``ai/<slug>``; force pushes, deletions, az
-  writes and HTTP calls to Azure DevOps are denied; commands the hook cannot resolve ask;
+  writes and HTTP calls to Azure DevOps are denied; commands the hook cannot resolve ask; in the
+  build and feedback phases, a commit that changes code without any test file asks the user
+  (red-green-refactor skill);
 * Azure DevOps MCP tools: known read tools pass, PR and comment writes are checked and scoped to
   the workflow's PR, every other tool is denied.
 
@@ -253,6 +255,80 @@ AZ_WRITE_VERBS = frozenset(
     }
 )
 CLOSE_SCRIPT = "close_workflow.py"
+# git commit: test-first gate (red-green-refactor skill).
+COMMIT_GATED_PHASES = wg.STOP_GATED_PHASES
+COMMIT_OPTIONS_WITH_VALUE = frozenset(
+    {
+        "-m",
+        "-F",
+        "-c",
+        "-C",
+        "-t",
+        "--message",
+        "--file",
+        "--reuse-message",
+        "--reedit-message",
+        "--template",
+        "--author",
+        "--date",
+        "--cleanup",
+        "--fixup",
+        "--squash",
+        "--trailer",
+        "--pathspec-from-file",
+    }
+)
+COMMIT_SHORT_FLAGS_WITH_VALUE = "mFcCt"
+GIT_STAGE_RE = re.compile(r"\bgit\b.*?\b(?:add|rm|mv|stage)\b", re.IGNORECASE | re.DOTALL)
+CODE_EXTENSIONS = frozenset(
+    {
+        ".py",
+        ".js",
+        ".jsx",
+        ".mjs",
+        ".cjs",
+        ".ts",
+        ".tsx",
+        ".vue",
+        ".svelte",
+        ".java",
+        ".kt",
+        ".kts",
+        ".scala",
+        ".groovy",
+        ".cs",
+        ".fs",
+        ".vb",
+        ".go",
+        ".rs",
+        ".rb",
+        ".php",
+        ".swift",
+        ".m",
+        ".mm",
+        ".c",
+        ".cc",
+        ".cpp",
+        ".cxx",
+        ".h",
+        ".hpp",
+        ".dart",
+        ".ex",
+        ".exs",
+        ".erl",
+        ".clj",
+        ".lua",
+        ".r",
+        ".sql",
+        ".sh",
+        ".ps1",
+        ".psm1",
+    }
+)
+TEST_DIRECTORIES = frozenset({"test", "tests", "__tests__", "spec", "specs", "e2e", "testing", "cypress", "playwright"})
+TEST_FILE_RE = re.compile(
+    r"(?:^test_|^conftest\.py$|_test\.[^.]+$|_spec\.[^.]+$|\.(?:test|spec|cy|e2e)\.[^.]+$|(?:Tests?|Spec|IT)\.[^.]+$)"
+)
 
 # Git ignores aliases that shadow built-in commands: only other names are looked up in the git config.
 GIT_BUILTINS = frozenset(
@@ -426,10 +502,12 @@ def is_unresolved(text: str) -> bool:
 class ShellContext:
     """State shared by the segments of one command line: variables assigned before use."""
 
-    def __init__(self, workflow: wg.Workflow) -> None:
+    def __init__(self, workflow: wg.Workflow, stages: bool = False) -> None:
         self.workflow = workflow
         self.variables: Dict[str, str] = {}
         self.git_aliases: Dict[str, str] = {}
+        # The command line also stages files, so a commit is checked against the working tree.
+        self.stages = stages
 
 
 def evaluate_opaque(text: str, what: str) -> Decision:
@@ -588,6 +666,86 @@ def evaluate_push(args: List[str], workflow: wg.Workflow, resolved: bool = True)
     return ("ask", f"Confirm `{shown}` to {workflow.branch} (workflow '{workflow.slug}', phase '{workflow.phase}').")
 
 
+def is_test_path(path: str) -> bool:
+    parts = path.replace("\\", "/").split("/")
+    for part in parts[:-1]:
+        lowered = part.lower()
+        if lowered in TEST_DIRECTORIES or lowered.endswith((".tests", ".test", ".specs", ".integrationtests")):
+            return True
+    return bool(TEST_FILE_RE.search(parts[-1]))
+
+
+def is_code_path(path: str) -> bool:
+    return Path(path).suffix.lower() in CODE_EXTENSIONS and not is_test_path(path)
+
+
+def parse_commit_args(args: List[str]) -> Tuple[bool, bool, List[str]]:
+    """Return (all tracked changes, amend, pathspecs) of a ``git commit`` command."""
+    commit_all = amend = False
+    pathspecs: List[str] = []
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg == "--":
+            pathspecs.extend(args[index + 1 :])
+            break
+        if arg in ("-a", "--all"):
+            commit_all = True
+        elif arg == "--amend":
+            amend = True
+        elif arg in COMMIT_OPTIONS_WITH_VALUE:
+            index += 1
+        elif re.fullmatch(r"-[A-Za-z]+", arg):
+            for position, flag in enumerate(arg[1:]):
+                if flag == "a":
+                    commit_all = True
+                if flag in COMMIT_SHORT_FLAGS_WITH_VALUE:
+                    if position == len(arg) - 2:
+                        index += 1
+                    break
+        elif not arg.startswith("-"):
+            pathspecs.append(arg)
+        index += 1
+    return commit_all, amend, pathspecs
+
+
+def commit_paths(args: List[str], workflow: wg.Workflow, stages: bool) -> Optional[List[str]]:
+    """Paths the commit will contain (a superset when files are staged by the same command), or None."""
+    root = workflow.root
+    commit_all, amend, pathspecs = parse_commit_args(args)
+    if stages or commit_all or pathspecs:
+        found = wg.workflow_dirty_paths(workflow)
+    else:
+        staged = wg.git(root, "diff", "--cached", "--name-only")
+        found = None if staged is None else staged.splitlines()
+    if found is None:
+        return None
+    paths = set(found)
+    if amend:
+        previous = wg.git(root, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD")
+        paths.update((previous or "").splitlines())
+    return sorted(path for path in paths if path)
+
+
+def evaluate_commit(args: List[str], workflow: wg.Workflow, stages: bool) -> Decision:
+    """Test-first gate: a build or feedback commit that changes code without any test file asks the user."""
+    if workflow.phase not in COMMIT_GATED_PHASES:
+        return NO_DECISION
+    paths = commit_paths(args, workflow, stages)
+    if not paths or any(is_test_path(path) for path in paths):
+        return NO_DECISION
+    code = [path for path in paths if is_code_path(path)]
+    if not code:
+        return NO_DECISION
+    shown = ", ".join(code[:5]) + (f" and {len(code) - 5} more" if len(code) > 5 else "")
+    return (
+        "ask",
+        f"This commit changes code ({shown}) without any test file, against the red-green-refactor skill. "
+        "Allow it only if you accept this lot without tests (for example a legacy project with no test "
+        "harness); otherwise deny it and the implementer writes the failing test first.",
+    )
+
+
 def evaluate_git(
     args: List[str], context: ShellContext, depth: int = 0, inherited: Optional[Dict[str, str]] = None
 ) -> Decision:
@@ -601,6 +759,8 @@ def evaluate_git(
     if subcommand == "config":
         record_git_alias(sub_args, context)
         return NO_DECISION
+    if subcommand == "commit":
+        return evaluate_commit(sub_args, workflow, context.stages)
     if subcommand != "push":
         alias = git_alias(subcommand, inline_aliases, workflow)
         if not alias:
@@ -822,7 +982,7 @@ def evaluate_command(command: str, context: Any, depth: int = 0) -> Decision:
 
 
 def evaluate_shell(command: str, hook: wg.HookInput, workflow: wg.Workflow) -> Decision:
-    decision = evaluate_command(command, ShellContext(workflow))
+    decision = evaluate_command(command, ShellContext(workflow, stages=bool(GIT_STAGE_RE.search(command))))
     if wg.mentions_protected_path(command) and SHELL_WRITE_RE.search(command):
         decision = most_restrictive(
             decision,

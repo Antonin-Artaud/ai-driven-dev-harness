@@ -19,6 +19,14 @@ Design: [ADR 0009](docs/architecture/decisions/0009-rename-ai-driven-dev-harness
 - **Breaking for existing installs:** the plugin is renamed from `ai-delivery-workflow` to `ai-driven-dev-harness` (`plugin.json` `name`). The agents are now namespaced `ai-driven-dev-harness:<agent>` by the client, and the hook messages carry the `[ai-driven-dev-harness]` prefix. Uninstall the old plugin (or remove its entry from `chat.pluginLocations`) and install the new one; finish or close running workflows first.
 - Unchanged on purpose: the `.ai/` working folder and its files, the `delivery-workflow` skill, the "AI delivery workflow" section of `AGENTS.md` (projects already onboarded keep working), the agent names and the Azure DevOps coordinates of this repository until it moves.
 
+## 0.5.0 — unreleased
+
+Red-green-refactor (PR 10), on top of 0.4.0 (specialist agents).
+
+### Added
+- `red-green-refactor` skill: the builder requires the test-first cycle in every implementer prompt and checks the `TDD cycle` evidence of each lot report; the implementer applies it (failing test, minimal code, refactor).
+- Test-first gate: in the `build` and `feedback` phases, `PreToolUse` asks the user before a `git commit` that changes code without any test file, so only the user accepts a lot without tests.
+
 ## Unreleased — cost per agent
 
 ### Added

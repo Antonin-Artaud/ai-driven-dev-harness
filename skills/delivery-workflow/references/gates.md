@@ -66,6 +66,7 @@ The caller is recognized by the `agent_type` field of hooks fired in a subagent,
 | any other destination (`main`, `ai/x:main`, `HEAD:refs/heads/main`, tags), or an upstream that is not `ai/<slug>` | deny |
 | a push with variables or substitutions (`$BRANCH`, `$g push`, `` `git` push ``) | ask, or deny when a force option is visible (`$'-f'`) |
 | `eval`, `python -c`, `node -e`, `perl -e`, `ruby -e`, `php -r`, or shells nested deeper than 2 levels, mentioning git, az or Azure DevOps | ask, or deny for a force push |
+| `git commit` in `build` or `feedback` that changes code files without any test file (`red-green-refactor` skill) | ask: only the user accepts a lot without tests |
 | the close step (`close_workflow.py`) | ask |
 | `az rest`, `az repos policy`, `az repos pr` writes, `az boards work-item` writes, `az devops invoke` writes, any `az devops/repos/boards/pipelines/artifacts` write verb (`create`, `update`, `delete`, `run` ...) | deny |
 | other `az devops/repos/boards/pipelines/artifacts` commands that are not `list` or `show` | ask |

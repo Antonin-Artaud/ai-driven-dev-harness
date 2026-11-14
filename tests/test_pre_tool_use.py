@@ -258,6 +258,75 @@ class PreToolUseTestCase(unittest.TestCase):
 
     # az CLI ---------------------------------------------------------------------------------
 
+    # git commit: test-first gate ---------------------------------------------------------------
+
+    def stage(self, *paths: str) -> None:
+        for path in paths:
+            self.repo.write(path, "x = 1\n")
+        self.repo.git("add", *paths)
+
+    def test_commit_of_code_without_tests_asks_the_user(self) -> None:
+        self.repo.write_workflow(phase="build")
+        self.stage("src/scoring.py", "docs/architecture/components.md")
+        for command in (
+            "git commit -m 'feat(scoring): x'",
+            "git -C . commit -q -m 'feat: x'",
+            'bash -c "git commit -m x"',
+        ):
+            with self.subTest(command=command):
+                decision, reason = self.shell(command)
+                self.assertEqual(decision, "ask")
+                self.assertIn("src/scoring.py", reason)
+                self.assertIn("red-green-refactor", reason)
+                self.assertNotIn("components.md", reason)
+
+    def test_commit_with_tests_has_no_decision(self) -> None:
+        self.repo.write_workflow(phase="build")
+        for test_path in (
+            "tests/test_scoring.py",
+            "src/scoring_test.go",
+            "web/app/scoring.spec.ts",
+            "web/app/__tests__/scoring.js",
+            "src/Bank.Tests/ScoringTests.cs",
+            "e2e/login.cy.js",
+        ):
+            with self.subTest(test=test_path):
+                self.stage("src/scoring.py", test_path)
+                self.assertEqual(self.shell("git commit -m 'feat: x'")[0], None)
+                self.repo.git("reset", "-q")
+
+    def test_commit_without_code_has_no_decision(self) -> None:
+        self.repo.write_workflow(phase="build")
+        self.stage("README.md", "docs/architecture/data.md", "config/app.json")
+        self.assertEqual(self.shell("git commit -m 'docs: x'")[0], None)
+
+    def test_commit_gate_sees_files_staged_by_the_same_command(self) -> None:
+        self.repo.write_workflow(phase="feedback")
+        self.repo.write("src/scoring.py", "x = 2\n")
+        for command in ("git add -A && git commit -m 'fix: x'", "git add src/scoring.py; git commit -m x"):
+            with self.subTest(command=command):
+                self.assertEqual(self.shell(command)[0], "ask")
+        self.repo.commit_file("src/scoring.py", "x = 3\n", "feat: base")
+        self.repo.write("src/scoring.py", "x = 4\n")
+        self.assertEqual(self.shell("git commit -am 'fix: x'")[0], "ask")
+
+    def test_amend_includes_the_files_of_the_amended_commit(self) -> None:
+        self.repo.write_workflow(phase="build")
+        self.stage("tests/test_scoring.py")
+        self.repo.commit_file("src/scoring.py", "x = 1\n", "feat: lot 1")
+        self.stage("src/scoring.py")
+        self.assertEqual(self.shell("git commit --amend --no-edit")[0], None)
+        self.repo.commit_file("src/other.py", "x = 1\n", "feat: lot 2")
+        self.assertEqual(self.shell("git commit --amend --no-edit")[0], "ask")
+
+    def test_commit_gate_only_applies_in_build_and_feedback(self) -> None:
+        self.stage("src/scoring.py")
+        self.assertEqual(self.shell("git commit -m x")[0], None)
+        for phase in ("plan", "pr-open", "escalated"):
+            with self.subTest(phase=phase):
+                self.repo.write_workflow(phase=phase)
+                self.assertEqual(self.shell("git commit -m x")[0], None)
+
     def test_az_cli_writes_are_denied(self) -> None:
         self.repo.write_workflow(phase="build")
         for command in (

@@ -18,8 +18,8 @@ The plugin modules, their responsibilities, and where new code goes.
 |---|---|---|---|---|---|
 | `challenger` | yes | Claude Opus | read, search, edit, todo, `ado-read/*` | delivery-workflow, business-challenge, azure-devops | `com.github.copilot/agents/challenger.agent.md` |
 | `architect` | yes | Claude Opus | read, search, edit, todo, agent, web, `ado-read/*` | delivery-workflow, solution-design, architecture-mapping | `com.github.copilot/agents/architect.agent.md` |
-| `builder` | yes | Claude Sonnet | read, search, edit, execute, todo, agent, `ado-read/*`, `ado-write/*` | delivery-workflow, plan-execution, azure-devops, pr-feedback | `com.github.copilot/agents/builder.agent.md` |
-| `implementer` | no (subagent) | Claude Sonnet | read, search, edit, execute, todo | plan-execution | `com.github.copilot/agents/implementer.agent.md` |
+| `builder` | yes | Claude Sonnet | read, search, edit, execute, todo, agent, `ado-read/*`, `ado-write/*` | delivery-workflow, plan-execution, red-green-refactor, azure-devops, pr-feedback | `com.github.copilot/agents/builder.agent.md` |
+| `implementer` | no (subagent) | Claude Sonnet | read, search, edit, execute, todo | plan-execution, red-green-refactor | `com.github.copilot/agents/implementer.agent.md` |
 | `ui-ux-designer` | no (builder subagent) | Claude Sonnet | read, search, edit, execute, todo | ui-ux-design, plan-execution | `com.github.copilot/agents/ui-ux-designer.agent.md` |
 | `security-architect` | yes, and architect subagent | Claude Opus | read, search, edit, todo, web, `ado-read/*` | delivery-workflow, security-design | `com.github.copilot/agents/security-architect.agent.md` |
 | `performance-architect` | yes, and architect subagent | Claude Opus | read, search, edit, todo, web, `ado-read/*` | delivery-workflow, performance-design | `com.github.copilot/agents/performance-architect.agent.md` |
@@ -49,6 +49,7 @@ flowchart LR
 | `business-challenge` | Challenge the need, Definition of Ready, `brief.md` | `skills/business-challenge/` |
 | `solution-design` | Options, ADR, specialist consultation, checklists (design, testing, reliability), `plan.md` in lots (`Kind: ui | code`), documentation impact | `skills/solution-design/` |
 | `plan-execution` | Builder and implementer procedures, review loop bounded to 2 iterations | `skills/plan-execution/` |
+| `red-green-refactor` | Test-first discipline: failing test, minimal code, refactor; `TDD cycle` evidence in the lot report, checked by the builder; a code commit without tests needs the user's approval (`PreToolUse`) | `skills/red-green-refactor/` |
 | `code-review` | Independent review of `merge-base..HEAD`, severities, `review.md` | `skills/code-review/` |
 | `pr-feedback` | Triage of PR comments (fix, discuss, decline), fixes, `🤖` replies | `skills/pr-feedback/` |
 | `azure-devops` | Use of the MCP servers: work item intake, draft PR creation, comments | `skills/azure-devops/` |
@@ -69,7 +70,7 @@ Precedence rule: the target project's skills win over the plugin's, and the plug
 |---|---|---|
 | `workflow_gate.py` | Shared library: input parsing (VS Code Local and Copilot formats), workflow loading without git, git calls, `review.md` front matter, review gate, hook-owned state, heartbeat, decision log and redaction, Azure DevOps coordinates of `origin`, output format | `scripts/hooks/workflow_gate.py` |
 | `state_policy.py` | File edits: simulation of the edit, `state.json` transitions, `review.md` ownership and iteration, hook-owned files, role boundaries | `scripts/hooks/state_policy.py` |
-| `pre_tool_use.py` | `PreToolUse` entry point: shell commands (git push, az, HTTP, wrappers, launchers, interpreters), Azure DevOps MCP tools, then `state_policy` for file edits | `scripts/hooks/pre_tool_use.py` |
+| `pre_tool_use.py` | `PreToolUse` entry point: shell commands (git push, test-first gate on commits, az, HTTP, wrappers, launchers, interpreters), Azure DevOps MCP tools, then `state_policy` for file edits | `scripts/hooks/pre_tool_use.py` |
 | `stop.py` | Review gate (`build`, `feedback`) and record gate (`pr-open`), consecutive block count | `scripts/hooks/stop.py` |
 | `user_prompt.py` | `UserPromptSubmit`: time of the user's last prompt, heartbeat | `scripts/hooks/user_prompt.py` |
 | `subagent.py` | `SubagentStart` / `SubagentStop`: subagent markers, usage attribution | `scripts/hooks/subagent.py` |

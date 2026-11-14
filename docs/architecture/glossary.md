@@ -19,6 +19,8 @@ sources:
 | Review gate | Rule that requires an `APPROVED` review of HEAD and a clean working tree | `review_gate` |
 | Draft PR | Unpublished Azure Repos PR; only the user publishes it | `isDraft: true` |
 | Escalation | Legitimate stop of the workflow when the user must decide, with its origin phase and reason | `phase: escalated`, `state.escalation` |
+| TDD cycle | Red-green-refactor evidence per behavior in the implementer's lot report: failing test, green run, refactor | `red-green-refactor` skill |
+| Test-first gate | `PreToolUse` rule: a build or feedback commit that changes code without any test file asks the user | `evaluate_commit` |
 | Validation | The user's explicit approval of the brief or the plan, recorded with its date and HEAD | `brief_validated`, `plan_validated` |
 | Triage | Classification of the PR comments (fix, discuss, decline) before any change, in its own ungated phase | `phase: triage`, `feedback.md` |
 | Close step | Script that ends a workflow: `phase: done`, archive under `.ai/archive/`, `.ai/current` removed | `scripts/close_workflow.py` |

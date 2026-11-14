@@ -61,7 +61,7 @@ class ManifestTestCase(unittest.TestCase):
 class SkillsTestCase(unittest.TestCase):
     def test_skills_are_valid(self) -> None:
         folders = [path for path in SKILLS_DIR.iterdir() if path.is_dir()]
-        self.assertGreaterEqual(len(folders), 9)
+        self.assertGreaterEqual(len(folders), 10)
         for folder in folders:
             with self.subTest(skill=folder.name):
                 skill_file = folder / "SKILL.md"
@@ -77,7 +77,14 @@ class SkillsTestCase(unittest.TestCase):
                     self.assertTrue((folder / link).resolve().is_file(), f"broken link {link}")
 
     def test_stage_skills_trigger_only_in_the_workflow(self) -> None:
-        for name in ("business-challenge", "solution-design", "plan-execution", "code-review", "pr-feedback"):
+        for name in (
+            "business-challenge",
+            "solution-design",
+            "plan-execution",
+            "code-review",
+            "pr-feedback",
+            "red-green-refactor",
+        ):
             with self.subTest(skill=name):
                 meta = parse_frontmatter((SKILLS_DIR / name / "SKILL.md").read_text(encoding="utf-8"))
                 self.assertIs(meta.get("user-invocable"), False)
@@ -198,6 +205,8 @@ class AgentsTestCase(unittest.TestCase):
         self.assertEqual(found["architect"][1]["agents"], ["security-architect", "performance-architect"])
         architect_text = found["architect"][0].read_text(encoding="utf-8")
         self.assertIn("`architecture-mapping` skill", architect_text)
+        for name in ("builder", "implementer"):
+            self.assertIn("`red-green-refactor` skill", found[name][0].read_text(encoding="utf-8"))
         reviewer_models = found["reviewer"][1]["model"]
         implementer_models = found["implementer"][1]["model"]
         self.assertNotEqual(family(reviewer_models[0]), family(implementer_models[0]), "cross-family review")
