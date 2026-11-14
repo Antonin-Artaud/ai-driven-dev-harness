@@ -2,7 +2,7 @@
 
 ## AI delivery workflow
 
-<!-- Project contract read by the ai-delivery-workflow agents. Keep it short and factual. -->
+<!-- Project contract read by the ai-driven-dev-harness agents. Keep it short and factual. -->
 
 ### Commands
 | Purpose | Command |

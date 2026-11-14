@@ -1,4 +1,4 @@
-"""Shared helpers for the ai-delivery-workflow hooks.
+"""Shared helpers for the ai-driven-dev-harness hooks.
 
 Standard library only, Python >= 3.9. The hooks accept both payload shapes:
 
@@ -41,7 +41,7 @@ PHASES = ("challenge", "design", "build", "pr-open", "triage", "feedback", "esca
 MAX_REVIEW_ITERATIONS = 2
 MAX_STOP_BLOCKS = 3
 PR_DESCRIPTION_LIMIT = 4000
-LOG_PREFIX = "[ai-delivery-workflow]"
+LOG_PREFIX = "[ai-driven-dev-harness]"
 REVIEWER_AGENT = "reviewer"
 IMPLEMENTER_AGENT = "implementer"
 UI_DESIGNER_AGENT = "ui-ux-designer"
@@ -227,7 +227,7 @@ def parse_input(payload: Dict[str, Any]) -> HookInput:
 
 
 def is_agent_name(name: str, agent: str) -> bool:
-    """``agent``, possibly namespaced by the client (``ai-delivery-workflow:reviewer``)."""
+    """``agent``, possibly namespaced by the client (``ai-driven-dev-harness:reviewer``)."""
     return bool(_NAME_RE[agent].search(name.strip().lower()))
 
 

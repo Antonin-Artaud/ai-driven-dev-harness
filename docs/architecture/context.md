@@ -14,7 +14,7 @@ Who uses the plugin, and which external systems it talks to (C4 level 1).
 
 ## The system
 
-`ai-delivery-workflow` is an agent plugin in the Agent Plugins 1.0 format (`plugin.json`) for VS Code and GitHub Copilot. It turns a request (prompt, spec or Azure DevOps work item) into a reviewed **Azure Repos draft PR** (`README.md`, `skills/delivery-workflow/SKILL.md`). Nothing runs as a long-lived application: the plugin is a set of agents, skills and hooks loaded by the host (VS Code).
+`ai-driven-dev-harness` is an agent plugin in the Agent Plugins 1.0 format (`plugin.json`) for VS Code and GitHub Copilot. It turns a request (prompt, spec or Azure DevOps work item) into a reviewed **Azure Repos draft PR** (`README.md`, `skills/delivery-workflow/SKILL.md`). Nothing runs as a long-lived application: the plugin is a set of agents, skills and hooks loaded by the host (VS Code).
 
 ## Actors
 
@@ -37,7 +37,7 @@ Who uses the plugin, and which external systems it talks to (C4 level 1).
 ```mermaid
 flowchart LR
   dev([Developer]) -->|request, validations| vscode[VS Code + Copilot]
-  vscode -->|loads| plugin[ai-delivery-workflow<br/>agents, skills, hooks]
+  vscode -->|loads| plugin[ai-driven-dev-harness<br/>agents, skills, hooks]
   plugin -->|prompts| llm[Claude / GPT models]
   plugin -->|MCP HTTP| ado[Azure DevOps MCP]
   ado -->|auth| entra[Microsoft Entra ID]

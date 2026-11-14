@@ -1,4 +1,4 @@
-"""File-write policy of the ai-delivery-workflow hooks (ADR 0006).
+"""File-write policy of the ai-driven-dev-harness hooks (ADR 0006).
 
 Covers every file edit tool call while a workflow is active:
 

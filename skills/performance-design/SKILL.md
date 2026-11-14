@@ -1,6 +1,6 @@
 ---
 name: performance-design
-description: 'Performance analysis step of the ai-delivery-workflow, for the performance-architect agent: from a validated .ai/<slug>/brief.md and the draft plan.md, set budgets from the brief or measurements, find the hot paths, data volumes and complexity risks, define a measurement plan and concrete requirements per lot in .ai/<slug>/performance.md. Use only within this delivery workflow, when the architect consults the performance-architect or the user asks it to analyse a plan.'
+description: 'Performance analysis step of the ai-driven-dev-harness, for the performance-architect agent: from a validated .ai/<slug>/brief.md and the draft plan.md, set budgets from the brief or measurements, find the hot paths, data volumes and complexity risks, define a measurement plan and concrete requirements per lot in .ai/<slug>/performance.md. Use only within this delivery workflow, when the architect consults the performance-architect or the user asks it to analyse a plan.'
 ---
 
 # Performance design

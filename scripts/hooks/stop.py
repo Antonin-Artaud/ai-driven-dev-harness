@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stop hook of the ai-delivery-workflow plugin: the review gate and the record gate.
+"""Stop hook of the ai-driven-dev-harness plugin: the review gate and the record gate.
 
 In the ``build`` and ``feedback`` phases, the main agent cannot finish its turn while the work
 branch has uncommitted changes, or commits that are not covered by an APPROVED ``review.md``.

@@ -39,7 +39,7 @@ The limits and reliability mechanisms present in the code. No performance target
 
 ## Observability
 
-Every denial carries the `[ai-delivery-workflow]` prefix and a reason readable by the agent and the user (`LOG_PREFIX`). Every decision, Stop block or release, subagent start and stop, close, hook error and web tool call is appended to `.ai/<slug>/log.jsonl` with credentials redacted (`log_event`, `redact` in `scripts/hooks/workflow_gate.py`). The heartbeat in `.ai/<slug>/.hooks.json` shows that the hooks run and which plugin version runs them. No metrics.
+Every denial carries the `[ai-driven-dev-harness]` prefix and a reason readable by the agent and the user (`LOG_PREFIX`). Every decision, Stop block or release, subagent start and stop, close, hook error and web tool call is appended to `.ai/<slug>/log.jsonl` with credentials redacted (`log_event`, `redact` in `scripts/hooks/workflow_gate.py`). The heartbeat in `.ai/<slug>/.hooks.json` shows that the hooks run and which plugin version runs them. No metrics.
 
 ## Tests and CI
 

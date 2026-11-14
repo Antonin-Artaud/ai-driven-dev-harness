@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Close step of the ai-delivery-workflow: archive the active workflow.
+"""Close step of the ai-driven-dev-harness: archive the active workflow.
 
 Sets ``phase: done`` (with ``closed_at`` and the reason) in ``.ai/<slug>/state.json``, moves
 ``.ai/<slug>/`` to ``.ai/archive/<slug>/`` (suffixed with a timestamp if that folder exists) and

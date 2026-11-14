@@ -1,6 +1,14 @@
 # Changelog
 
-All notable changes of the `ai-delivery-workflow` plugin. Versions follow [semantic versioning](https://semver.org/); the version lives in `plugin.json`.
+All notable changes of the `ai-driven-dev-harness` plugin. Versions follow [semantic versioning](https://semver.org/); the version lives in `plugin.json`.
+
+## Unreleased — renamed to ai-driven-dev-harness
+
+Design: [ADR 0009](docs/architecture/decisions/0009-rename-ai-driven-dev-harness.md).
+
+### Changed
+- **Breaking for existing installs:** the plugin is renamed from `ai-delivery-workflow` to `ai-driven-dev-harness` (`plugin.json` `name`). The agents are now namespaced `ai-driven-dev-harness:<agent>` by the client, and the hook messages carry the `[ai-driven-dev-harness]` prefix. Uninstall the old plugin (or remove its entry from `chat.pluginLocations`) and install the new one; finish or close running workflows first.
+- Unchanged on purpose: the `.ai/` working folder and its files, the `delivery-workflow` skill, the "AI delivery workflow" section of `AGENTS.md` (projects already onboarded keep working), the agent names and the Azure DevOps coordinates of this repository until it moves.
 
 ## 0.4.0 — unreleased
 

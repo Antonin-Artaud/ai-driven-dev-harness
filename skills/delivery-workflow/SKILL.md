@@ -1,6 +1,6 @@
 ---
 name: delivery-workflow
-description: 'Shared conventions of the ai-delivery-workflow agents (challenger, architect, security-architect, performance-architect, builder, implementer, ui-ux-designer, reviewer): .ai/ artifacts, state.json phases, triage paths, language rule, project contract, skill precedence and the hook gates (state transitions, review gate, draft PR gate, push rules). Use when acting as one of these agents, or when a workflow gate blocks an action.'
+description: 'Shared conventions of the ai-driven-dev-harness agents (challenger, architect, security-architect, performance-architect, builder, implementer, ui-ux-designer, reviewer): .ai/ artifacts, state.json phases, triage paths, language rule, project contract, skill precedence and the hook gates (state transitions, review gate, draft PR gate, push rules). Use when acting as one of these agents, or when a workflow gate blocks an action.'
 user-invocable: false
 ---
 

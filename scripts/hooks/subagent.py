@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SubagentStart / SubagentStop hooks of the ai-delivery-workflow plugin.
+"""SubagentStart / SubagentStop hooks of the ai-driven-dev-harness plugin.
 
 While a workflow subagent (reviewer, implementer, ui-ux-designer, security-architect,
 performance-architect) runs, ``.ai/<slug>/.<name>-active`` exists. The PreToolUse hook uses these
