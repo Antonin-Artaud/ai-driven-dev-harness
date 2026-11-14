@@ -1,4 +1,4 @@
-# Lint configuration (CI: azure-pipelines.yml). Standard library code, Python >= 3.9.
+# Lint configuration (CI: .github/workflows/ci.yml). Standard library code, Python >= 3.9.
 target-version = "py39"
 line-length = 120
 

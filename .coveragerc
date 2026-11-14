@@ -1,4 +1,4 @@
-# Coverage of the plugin scripts (CI: azure-pipelines.yml). Hooks run in subprocesses are counted
+# Coverage of the plugin scripts (CI: .github/workflows/ci.yml). Hooks run in subprocesses are counted
 # when COVERAGE_PROCESS_START points to this file (tests/sitecustomize.py starts coverage there).
 [run]
 source =

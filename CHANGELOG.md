@@ -1,6 +1,23 @@
 # Changelog
 
-All notable changes of the `ai-delivery-workflow` plugin. Versions follow [semantic versioning](https://semver.org/); the version lives in `plugin.json`.
+All notable changes of the `ai-driven-dev-harness` plugin. Versions follow [semantic versioning](https://semver.org/); the version lives in `plugin.json`.
+
+## Unreleased — moved to GitHub
+
+### Changed
+- The repository moved from Azure Repos to GitHub: `plugin.json` `repository`, the install source and the `git clone` of the README point to <https://github.com/Antonin-Artaud/ai-driven-dev-harness>.
+- CI: GitHub Actions (`.github/workflows/ci.yml`) replaces `azure-pipelines.yml`, with the same jobs: tests on Ubuntu (Python 3.9 and 3.12), Windows and macOS, then ruff, mypy and coverage (minimum 80%). It also runs on pull requests.
+
+### Fixed
+- `usage.py`: `summarize` narrows the `agents` and `models` entries in a way mypy accepts (3 errors with a recent mypy).
+
+## Unreleased — renamed to ai-driven-dev-harness
+
+Design: [ADR 0009](docs/architecture/decisions/0009-rename-ai-driven-dev-harness.md).
+
+### Changed
+- **Breaking for existing installs:** the plugin is renamed from `ai-delivery-workflow` to `ai-driven-dev-harness` (`plugin.json` `name`). The agents are now namespaced `ai-driven-dev-harness:<agent>` by the client, and the hook messages carry the `[ai-driven-dev-harness]` prefix. Uninstall the old plugin (or remove its entry from `chat.pluginLocations`) and install the new one; finish or close running workflows first.
+- Unchanged on purpose: the `.ai/` working folder and its files, the `delivery-workflow` skill, the "AI delivery workflow" section of `AGENTS.md` (projects already onboarded keep working), the agent names and the Azure DevOps coordinates of this repository until it moves.
 
 ## Unreleased — cost per agent
 

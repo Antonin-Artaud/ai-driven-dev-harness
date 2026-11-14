@@ -1,6 +1,6 @@
 ---
 name: architecture-mapping
-description: 'Map a project''s application into committed architecture docs (docs/architecture/ by default): C4 context and containers, components, external integrations with Mermaid sequence diagrams, data, security, quality attributes, glossary and ADRs, each statement sourced from the code. Use for the initial mapping during project-onboarding, for an explicit --refresh of docs/architecture, or when an ai-delivery-workflow agent reads or updates docs/architecture during a delivery.'
+description: 'Map a project''s application into committed architecture docs (docs/architecture/ by default): C4 context and containers, components, external integrations with Mermaid sequence diagrams, data, security, quality attributes, glossary and ADRs, each statement sourced from the code. Use for the initial mapping during project-onboarding, for an explicit --refresh of docs/architecture, or when an ai-driven-dev-harness agent reads or updates docs/architecture during a delivery.'
 argument-hint: 'Optional: --refresh, or the pages to (re)map'
 ---
 

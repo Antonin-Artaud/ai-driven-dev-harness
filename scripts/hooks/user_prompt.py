@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""UserPromptSubmit hook of the ai-delivery-workflow plugin.
+"""UserPromptSubmit hook of the ai-driven-dev-harness plugin.
 
 Records the time of the user's last prompt in ``.ai/<slug>/.hooks.json`` (``user_prompt_at``) and
 refreshes the heartbeat. The PreToolUse hook compares it with the time ``brief.md``, ``plan.md`` or

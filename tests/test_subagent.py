@@ -23,7 +23,7 @@ class SubagentHookTestCase(unittest.TestCase):
 
     def test_implementer_run_has_its_own_marker(self) -> None:
         implementer = self.marker.parent / ".implementer-active"
-        self.assertEqual(self.run_event("start", {"agentName": "ai-delivery-workflow:implementer"}), {})
+        self.assertEqual(self.run_event("start", {"agentName": "ai-driven-dev-harness:implementer"}), {})
         self.assertTrue(implementer.exists())
         self.assertFalse(self.marker.exists())
         self.assertEqual(self.run_event("stop", {"agentName": "implementer"}), {})

@@ -81,7 +81,7 @@ class SkillsTestCase(unittest.TestCase):
             with self.subTest(skill=name):
                 meta = parse_frontmatter((SKILLS_DIR / name / "SKILL.md").read_text(encoding="utf-8"))
                 self.assertIs(meta.get("user-invocable"), False)
-                self.assertIn("ai-delivery-workflow", meta["description"])
+                self.assertIn("ai-driven-dev-harness", meta["description"])
         meta = parse_frontmatter((SKILLS_DIR / "architecture-mapping" / "SKILL.md").read_text(encoding="utf-8"))
         self.assertIn("docs/architecture", meta["description"])
         self.assertNotIn("Use when mapping or documenting an architecture", meta["description"])
@@ -90,7 +90,7 @@ class SkillsTestCase(unittest.TestCase):
         for name in ("ui-ux-design", "security-design", "performance-design"):
             with self.subTest(skill=name):
                 text = (SKILLS_DIR / name / "SKILL.md").read_text(encoding="utf-8")
-                self.assertIn("ai-delivery-workflow", parse_frontmatter(text)["description"])
+                self.assertIn("ai-driven-dev-harness", parse_frontmatter(text)["description"])
         for name in ("security.md", "performance.md"):
             self.assertFalse((SKILLS_DIR / "solution-design" / "references" / name).exists(), f"{name} moved")
         for agent, skill in (

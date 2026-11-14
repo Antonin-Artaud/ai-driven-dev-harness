@@ -5,7 +5,7 @@ sources: []
 ---
 # Architecture map
 
-Short, sourced map of the `ai-delivery-workflow` plugin. Every statement cites the code it comes from; what the code does not prove is marked **To confirm**. The pages are kept up to date in the same pull request as the code they describe.
+Short, sourced map of the `ai-driven-dev-harness` plugin. Every statement cites the code it comes from; what the code does not prove is marked **To confirm**. The pages are kept up to date in the same pull request as the code they describe.
 
 ## Pages
 
