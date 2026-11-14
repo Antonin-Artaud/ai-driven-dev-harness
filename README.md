@@ -1,197 +1,197 @@
 # ai-driven-dev-harness
 
-Plugin d'agents (format [Agent Plugins 1.0](https://agent-plugins.org/)) pour VS Code et GitHub Copilot. Il transforme une demande (prompt, spec ou work item Azure DevOps) en **PR draft Azure Repos** relue. Le parcours passe par un challenge du besoin métier, un plan d'architecture qui part de la cartographie du projet, une implémentation qui suit le plan et met cette cartographie à jour, et une review indépendante fondée sur les skills du projet.
+Agent plugin ([Agent Plugins 1.0](https://agent-plugins.org/) format) for VS Code and GitHub Copilot. It turns a request (prompt, spec or Azure DevOps work item) into a reviewed **Azure Repos draft PR**. The flow challenges the business need, plans the architecture starting from the project's architecture map, implements the plan while keeping that map up to date, and ends with an independent review based on the project's skills.
 
 ```
-challenger ─▶ architect ─▶ builder ─▶ PR draft ─▶ ta revue dans Azure DevOps ─▶ builder (retours) ─▶ tu publies
- brief.md      plan.md      ├─ implementer (subagent, un lot de code à la fois)
-               │            ├─ ui-ux-designer (subagent, un lot UI à la fois)
-               │            └─ reviewer (subagent indépendant, autre famille de modèles)
-               ├─ security-architect (subagent si la sécurité est en jeu : security.md)
-               └─ performance-architect (subagent si la performance est en jeu : performance.md)
+challenger ─▶ architect ─▶ builder ─▶ draft PR ─▶ your review in Azure DevOps ─▶ builder (feedback) ─▶ you publish
+ brief.md      plan.md      ├─ implementer (subagent, one code batch at a time)
+               │            ├─ ui-ux-designer (subagent, one UI batch at a time)
+               │            └─ reviewer (independent subagent, different model family)
+               ├─ security-architect (subagent when security is at stake: security.md)
+               └─ performance-architect (subagent when performance is at stake: performance.md)
 ```
 
-Chaque passage entre agents interactifs est un **handoff** (`send: false`) : tu valides le brief ou le plan, puis tu cliques.
+Each step between interactive agents is a **handoff** (`send: false`): you validate the brief or the plan, then click.
 
-## Contenu
+## Contents
 
-| Élément | Rôle |
+| Item | Role |
 |---|---|
-| `challenger` (agent) | Challenge le besoin, trie la demande (fast, standard, feature) et produit `brief.md` |
-| `architect` (agent) | Part de la cartographie `docs/architecture/`, vérifie dans le code, compare des options, conteste ta vision et produit `plan.md` découpé en lots, avec l'impact sur la doc |
-| `security-architect` (agent et subagent de l'architect) | Modélise les menaces (STRIDE) et écrit `security.md` : mitigations, exigences `SEC-n` par lot, risque résiduel. Ne code pas. Consulté par l'architect quand le brief ou le changement touche la sécurité, ou lancé directement par toi pour analyser un plan |
-| `performance-architect` (agent et subagent de l'architect) | Fixe les budgets, repère les chemins chauds et les volumes, prévoit les mesures et écrit `performance.md` avec des exigences `PERF-n` par lot. Ne code pas. Même mode de consultation |
-| `builder` (agent) | Orchestre implementer, ui-ux-designer et reviewer, pousse la branche, ouvre la PR draft et traite les commentaires de PR |
-| `implementer` (subagent caché) | Implémente un lot en TDD (red-green-refactor) : tests, code, mise à jour de la doc d'architecture, un commit |
-| `ui-ux-designer` (subagent caché) | Implémente les lots marqués `Kind: ui` : design system du projet d'abord, accessibilité WCAG 2.1 AA, tous les états (chargement, vide, erreur…), responsive, i18n, preuves visuelles quand le projet sait en produire |
-| `reviewer` (subagent caché) | Relit `merge-base..HEAD` en appliquant d'abord les skills du projet, vérifie les exigences `SEC-n` et `PERF-n` du plan, la checklist UI des lots UI et la doc d'architecture, puis écrit `review.md` |
+| `challenger` (agent) | Challenges the need, triages the request (fast, standard, feature) and produces `brief.md` |
+| `architect` (agent) | Starts from the `docs/architecture/` map, checks it against the code, compares options, challenges your vision and produces `plan.md`, split into batches, with the impact on the docs |
+| `security-architect` (agent and architect subagent) | Models threats (STRIDE) and writes `security.md`: mitigations, `SEC-n` requirements per batch, residual risk. Does not code. Consulted by the architect when the brief or the change touches security, or started directly by you to analyse a plan |
+| `performance-architect` (agent and architect subagent) | Sets budgets, finds hot paths and volumes, plans measurements and writes `performance.md` with `PERF-n` requirements per batch. Does not code. Consulted the same way |
+| `builder` (agent) | Orchestrates the implementer, ui-ux-designer and reviewer, pushes the branch, opens the draft PR and handles PR comments |
+| `implementer` (hidden subagent) | Implements one batch with TDD (red-green-refactor): tests, code, architecture doc update, one commit |
+| `ui-ux-designer` (hidden subagent) | Implements the batches marked `Kind: ui`: the project's design system first, WCAG 2.1 AA accessibility, every state (loading, empty, error…), responsive, i18n, visual evidence when the project can produce it |
+| `reviewer` (hidden subagent) | Reviews `merge-base..HEAD` applying the project's skills first, checks the plan's `SEC-n` and `PERF-n` requirements, the UI checklist for UI batches and the architecture docs, then writes `review.md` |
 | `skills/` | `delivery-workflow`, `business-challenge`, `solution-design`, `security-design`, `performance-design`, `dotnet-performance`, `plan-execution`, `red-green-refactor`, `ui-ux-design`, `code-review`, `pr-feedback`, `azure-devops`, `project-onboarding`, `architecture-mapping` |
-| `com.github.copilot/hooks/hooks.json` | Garde-fous déterministes `UserPromptSubmit`, `PreToolUse`, `SubagentStart`, `SubagentStop` et `Stop` (scripts Python, bibliothèque standard uniquement) |
+| `com.github.copilot/hooks/hooks.json` | Deterministic `UserPromptSubmit`, `PreToolUse`, `SubagentStart`, `SubagentStop` and `Stop` guardrails (Python scripts, standard library only) |
 
-### Projets .NET
+### .NET projects
 
-Sur un projet .NET, le skill `dotnet-performance` vise le code le plus économe en mémoire et le plus performant possible, en deux niveaux. Le **niveau A** s'applique à tout le code .NET écrit : lectures EF Core sans suivi (`AsNoTracking` ou `QueryTrackingBehavior.NoTracking` par défaut), projections, pas de N+1, pagination keyset, `ExecuteUpdate`/`ExecuteDelete`, async de bout en bout, logs et JSON générés par source, analyseurs CA18xx. Le **niveau B** s'applique aux chemins chauds couverts par une exigence `PERF-n` : `Span<T>`, `Memory<T>`, `stackalloc`, `ArrayPool<T>`, `ValueTask`, `SearchValues`, Pipelines, SIMD… avec un benchmark BenchmarkDotNet (`[MemoryDiagnoser]`) avant/après. Chaque règle cite sa source Microsoft Learn et la version requise. L'onboarding ajoute le serveur MCP **`ms-learn`** (documentation Microsoft Learn, sans authentification) pour que les agents vérifient les API dans la documentation officielle.
+On a .NET project, the `dotnet-performance` skill aims for the most memory-efficient and fastest code possible, on two levels. **Level A** applies to all .NET code written: no-tracking EF Core reads (`AsNoTracking` or `QueryTrackingBehavior.NoTracking` by default), projections, no N+1, keyset pagination, `ExecuteUpdate`/`ExecuteDelete`, async all the way, source-generated logging and JSON, CA18xx analyzers. **Level B** applies to hot paths covered by a `PERF-n` requirement: `Span<T>`, `Memory<T>`, `stackalloc`, `ArrayPool<T>`, `ValueTask`, `SearchValues`, Pipelines, SIMD… with a before/after BenchmarkDotNet benchmark (`[MemoryDiagnoser]`). Each rule cites its Microsoft Learn source and the required version. Onboarding adds the **`ms-learn`** MCP server (Microsoft Learn documentation, no authentication) so the agents check APIs against the official documentation.
 
-Les agents restent légers. Toute la méthode vit dans les skills, un format portable, et chaque projet garde la main grâce à ses propres skills : **les skills du projet passent avant ceux du plugin**.
+The agents stay thin. The whole method lives in the skills, a portable format, and each project stays in control through its own skills: **the project's skills take precedence over the plugin's**.
 
-## Prérequis
+## Prerequisites
 
-- VS Code avec GitHub Copilot, harness **Local** (pour les handoffs).
-- Python ≥ 3.9 dans le PATH : `python` sous Windows, `python3` sous Linux et macOS.
-- Git, un dépôt hébergé sur Azure Repos et une organisation Azure DevOps rattachée à Microsoft Entra ID (exigence du serveur MCP distant).
+- VS Code with GitHub Copilot, **Local** harness (for handoffs).
+- Python ≥ 3.9 on the PATH: `python` on Windows, `python3` on Linux and macOS.
+- Git, a repository hosted on Azure Repos and an Azure DevOps organization connected to Microsoft Entra ID (required by the remote MCP server).
 
 ## Installation
 
-Source : [Antonin-Artaud / ai-driven-dev-harness](https://github.com/Antonin-Artaud/ai-driven-dev-harness) (GitHub).
+Source: [Antonin-Artaud / ai-driven-dev-harness](https://github.com/Antonin-Artaud/ai-driven-dev-harness) (GitHub).
 
-**Option 1 (recommandée pendant la mise au point) : clone local.** Clone le dépôt, puis déclare-le dans les paramètres utilisateur de VS Code (`settings.json`). Une modification du plugin est alors prise en compte sans réinstallation.
+**Option 1 (recommended while the plugin is being tuned): local clone.** Clone the repository, then declare it in the VS Code user settings (`settings.json`). Changes to the plugin are then picked up without reinstalling.
 
 ```powershell
-git clone "https://github.com/Antonin-Artaud/ai-driven-dev-harness.git" <dossier-des-plugins>\ai-driven-dev-harness
+git clone "https://github.com/Antonin-Artaud/ai-driven-dev-harness.git" <plugins-folder>\ai-driven-dev-harness
 ```
 
 ```jsonc
 {
   "chat.plugins.enabled": true,
   "chat.pluginLocations": {
-    "<dossier-des-plugins>/ai-driven-dev-harness": true
+    "<plugins-folder>/ai-driven-dev-harness": true
   },
   "chat.useHooks": true
 }
 ```
 
-**Option 2 : installation depuis la source.** Lance **Chat: Install Plugin From Source** et colle l'URL du dépôt. VS Code clone le dépôt avec tes identifiants git Azure Repos.
+**Option 2: install from source.** Run **Chat: Install Plugin From Source** and paste the repository URL. VS Code clones the repository with your git credentials.
 
-Remplace `<dossier-des-plugins>` par le dossier de ton choix (par exemple `C:/Users/<toi>/source`).
+Replace `<plugins-folder>` with the folder of your choice (for example `C:/Users/<you>/source`).
 
-Dans les deux cas, le workspace doit être approuvé (*trusted*), sinon les hooks ne s'exécutent pas.
+In both cases the workspace must be trusted, otherwise the hooks do not run.
 
-## Onboarding d'un projet
+## Onboarding a project
 
-1. Ouvre le projet et lance le skill `/project-onboarding`.
-2. L'agent exécute `skills/project-onboarding/scripts/onboard.py`, d'abord en `--dry-run` :
-   - il déduit l'organisation, le projet et le repo du remote `origin` ;
-   - il crée ou complète `.vscode/mcp.json` avec `ado-read` (lecture seule) et `ado-write` (PR draft et commentaires uniquement) ;
-   - il ajoute `.ai/` à `.git/info/exclude`, sans toucher au `.gitignore` de l'équipe ;
-   - avec `--docs`, il crée le squelette de la cartographie dans `docs/architecture/` (ou `--docs-path <dossier>`), sans écraser l'existant.
-3. Il te propose de cartographier l'application (skill `architecture-mapping`) : il te montre les pages et les points « À confirmer », puis les commite sur une branche dédiée pour une PR.
-4. Il rédige la section **AI delivery workflow** de `AGENTS.md` : commandes, branche de base, glossaire et correspondance optionnelle entre étapes et skills du projet. Il te demande validation avant d'écrire.
-5. Commite `AGENTS.md`, et `.vscode/mcp.json` s'il est suivi par git, sur la branche de base. Le builder exige un arbre de travail propre avant de créer sa branche `ai/<slug>`.
-6. Démarre `ado-read` et `ado-write` depuis la vue MCP (connexion Entra), ainsi que `ms-learn` sur un projet .NET (détecté par un `*.sln`, `*.slnx`, `*.csproj` ou `global.json`, ou forcé avec `--dotnet`).
+1. Open the project and run the `/project-onboarding` skill.
+2. The agent runs `skills/project-onboarding/scripts/onboard.py`, first with `--dry-run`:
+   - it infers the organization, project and repository from the `origin` remote;
+   - it creates or completes `.vscode/mcp.json` with `ado-read` (read only) and `ado-write` (draft PR and comments only);
+   - it adds `.ai/` to `.git/info/exclude`, without touching the team's `.gitignore`;
+   - with `--docs`, it creates the architecture map skeleton in `docs/architecture/` (or `--docs-path <folder>`), without overwriting existing files.
+3. It offers to map the application (`architecture-mapping` skill): it shows you the pages and the "To confirm" items, then commits them on a dedicated branch for a PR.
+4. It drafts the **AI delivery workflow** section of `AGENTS.md`: commands, base branch, glossary and an optional mapping between steps and the project's skills. It asks for your approval before writing.
+5. Commit `AGENTS.md`, and `.vscode/mcp.json` if git tracks it, on the base branch. The builder requires a clean working tree before creating its `ai/<slug>` branch.
+6. Start `ado-read` and `ado-write` from the MCP view (Entra sign-in), plus `ms-learn` on a .NET project (detected by a `*.sln`, `*.slnx`, `*.csproj` or `global.json`, or forced with `--dotnet`).
 
-## Utilisation
+## Usage
 
-1. Sélectionne l'agent **challenger** et donne ta demande, ou un ID ou une URL de work item.
-2. Réponds aux questions (5 maximum par tour, chacune avec une réponse par défaut) et valide `brief.md`. Clique ensuite sur **Design the solution**, ou sur **Fast path** pour un petit changement.
-3. L'**architect** propose des options, conteste ta vision et produit `plan.md`. Valide-le, puis clique sur **Implement the plan**. Selon le brief (ligne `Concerns`), il consulte le **security-architect** et le **performance-architect**, intègre leurs exigences dans les lots et marque les lots UI (`Kind: ui`), confiés ensuite à l'**ui-ux-designer**.
-4. Le **builder** fait implémenter les lots et relire la branche (2 itérations de review au maximum, sinon il te passe la main). Il pousse la branche, puis crée la PR draft liée au work item ; tu confirmes chacune de ces deux actions. Il archive ensuite le brief et le plan sur la PR dans le fil **🤖 Workflow record**.
-5. Relis la PR draft dans Azure DevOps et commente.
-6. De retour dans VS Code, clique sur **Address PR feedback**. Le builder passe en phase `triage`, classe les commentaires et propose des **learnings** : les règles réutilisables révélées par tes commentaires, à ajouter aux skills du projet, à ses instructions ou à `AGENTS.md`. **Tu valides le classement et chaque learning**, puis il corrige, commite les learnings à part (`docs(agents): …`), fait relire et répond à chaque fil. Un commentaire fait une fois n'a plus à être refait à la PR suivante.
-7. Publie la PR toi-même, puis demande au builder de **clore** le workflow (ou lance `python <plugin>/scripts/close_workflow.py --repo .`) : `phase` passe à `done`, `.ai/<slug>/` est archivé dans `.ai/archive/` et `.ai/current` est supprimé. Tu confirmes la clôture. Le builder t'affiche ensuite le **coût par agent** (ci-dessous).
+1. Select the **challenger** agent and give your request, or a work item ID or URL.
+2. Answer the questions (at most 5 per turn, each with a default answer) and validate `brief.md`. Then click **Design the solution**, or **Fast path** for a small change.
+3. The **architect** proposes options, challenges your vision and produces `plan.md`. Validate it, then click **Implement the plan**. Depending on the brief (`Concerns` line), it consults the **security-architect** and the **performance-architect**, folds their requirements into the batches and marks the UI batches (`Kind: ui`), which then go to the **ui-ux-designer**.
+4. The **builder** has the batches implemented and the branch reviewed (at most 2 review iterations, otherwise it hands back to you). It pushes the branch, then creates the draft PR linked to the work item; you confirm each of these two actions. It then archives the brief and the plan on the PR in the **🤖 Workflow record** thread.
+5. Review the draft PR in Azure DevOps and comment.
+6. Back in VS Code, click **Address PR feedback**. The builder enters the `triage` phase, classifies the comments and proposes **learnings**: the reusable rules your comments reveal, to add to the project's skills, its instructions or `AGENTS.md`. **You validate the classification and each learning**, then it fixes, commits the learnings separately (`docs(agents): …`), has the changes reviewed and replies to each thread. A comment made once does not have to be made again on the next PR.
+7. Publish the PR yourself, then ask the builder to **close** the workflow (or run `python <plugin>/scripts/close_workflow.py --repo .`): `phase` becomes `done`, `.ai/<slug>/` is archived in `.ai/archive/` and `.ai/current` is removed. You confirm the closing. The builder then shows you the **cost per agent** (below).
 
-## Coût par agent
+## Cost per agent
 
-À la clôture, le builder affiche un tableau : pour chaque agent (challenger, architect, builder et chaque subagent), le modèle, le nombre d'exécutions, la durée, les tokens (entrée, cache lu, cache écrit, sortie) et une **estimation en crédits GitHub AI** (1 crédit = 0,01 $), suivi du total. Tu peux aussi l'afficher à tout moment, y compris pour un workflow archivé :
+When closing, the builder shows a table: for each agent (challenger, architect, builder and each subagent), the model, the number of runs, the duration, the tokens (input, cache read, cache write, output) and an **estimate in GitHub AI credits** (1 credit = $0.01), followed by the total. You can also show it at any time, including for an archived workflow:
 
 ```powershell
-python <plugin>/scripts/usage_report.py --repo .                 # workflow actif
-python <plugin>/scripts/usage_report.py --repo . --slug <slug>   # workflow archivé
-python <plugin>/scripts/usage_report.py --repo . --json          # même résumé en JSON
+python <plugin>/scripts/usage_report.py --repo .                 # active workflow
+python <plugin>/scripts/usage_report.py --repo . --slug <slug>   # archived workflow
+python <plugin>/scripts/usage_report.py --repo . --json          # same summary as JSON
 ```
 
-D'où viennent les chiffres : ni VS Code ni Copilot ne donnent la consommation dans les hooks, et GitHub ne détaille pas les crédits par requête. Les hooks lisent donc le transcript de la session (`transcript_path`) et attribuent les nouvelles requêtes à l'agent qui tournait : au subagent entre son `SubagentStart` et son `SubagentStop`, à l'agent principal de la phase sinon. Le tout est écrit dans `.ai/<slug>/usage.json` (hooks seuls). Les crédits sont calculés avec les tarifs publics de [GitHub](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing), recopiés dans `scripts/hooks/pricing.json` (date de relevé dans le fichier).
+Where the numbers come from: neither VS Code nor Copilot exposes consumption to hooks, and GitHub does not break credits down per request. The hooks therefore read the session transcript (`transcript_path`) and attribute new requests to the agent that was running: to the subagent between its `SubagentStart` and its `SubagentStop`, otherwise to the phase's main agent. Everything is written to `.ai/<slug>/usage.json` (hooks only). Credits are computed with [GitHub](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing)'s public prices, copied into `scripts/hooks/pricing.json` (with the date they were taken in the file).
 
-Limites :
-- C'est une **estimation**, pas ta facture : le décompte exact est dans GitHub, *Billing > Metered usage*.
-- Le format du transcript n'est pas une API stable de VS Code. S'il ne contient pas de compteurs de tokens, le tableau l'indique et n'affiche que les exécutions et les durées, sans coût inventé. Lance alors `usage_report.py --probe <chemin du transcript>` : il liste la structure du fichier (les clés, jamais les valeurs) pour adapter le lecteur.
-- Un modèle absent de `pricing.json` (par exemple Gemini 3.1 Pro, non listé par GitHub) apparaît en `n/d` et le total devient un minimum (`≥`).
-- Des subagents lancés en parallèle partagent le transcript : leur répartition est approximative.
+Limits:
+- It is an **estimate**, not your bill: the exact count is in GitHub, *Billing > Metered usage*.
+- The transcript format is not a stable VS Code API. If it has no token counters, the table says so and shows only runs and durations, with no made-up cost. Then run `usage_report.py --probe <transcript path>`: it lists the file's structure (the keys, never the values) so the reader can be adapted.
+- A model missing from `pricing.json` (for example Gemini 3.1 Pro, not listed by GitHub) shows as `n/a` and the total becomes a minimum (`≥`).
+- Subagents started in parallel share the transcript: their split is approximate.
 
-## Cartographie de l'application (`docs/architecture/`)
+## Architecture map (`docs/architecture/`)
 
-Contrairement à `.ai/`, la cartographie est commitée avec le code. Le dossier est configurable dans la section **AI delivery workflow** de `AGENTS.md` (`docs/architecture/` par défaut).
+Unlike `.ai/`, the architecture map is committed with the code. The folder is configurable in the **AI delivery workflow** section of `AGENTS.md` (`docs/architecture/` by default).
 
-| Page | Contenu |
+| Page | Content |
 |---|---|
-| `README.md` | Index, points « À confirmer » |
-| `context.md`, `containers.md` | C4 niveaux 1 et 2 |
-| `components.md` | Modules, couches, dépendances autorisées |
-| `integrations.md` | API externes et diagrammes de séquence des flux critiques |
-| `data.md`, `security.md`, `quality.md` | Données, sécurité, qualités (performance, fiabilité, observabilité) |
-| `glossary.md` | Glossaire métier |
-| `decisions/` | ADR numérotés |
+| `README.md` | Index, "To confirm" items |
+| `context.md`, `containers.md` | C4 levels 1 and 2 |
+| `components.md` | Modules, layers, allowed dependencies |
+| `integrations.md` | External APIs and sequence diagrams of the critical flows |
+| `data.md`, `security.md`, `quality.md` | Data, security, qualities (performance, reliability, observability) |
+| `glossary.md` | Business glossary |
+| `decisions/` | Numbered ADRs |
 
-Règles : chaque affirmation cite le fichier du code dont elle vient, ce qui n'est pas prouvé est marqué « À confirmer », les schémas sont en Mermaid, et aucun secret ni URL interne n'y figure.
+Rules: every statement cites the code file it comes from, anything not proven is marked "To confirm", diagrams are in Mermaid, and no secret or internal URL appears.
 
-Cycle de vie : l'architect lit la cartographie et regarde ce qui a changé depuis le dernier commit de chaque page ; le plan liste l'**impact sur la doc** (ou `none` avec la raison, par exemple un changement de libellé) ; l'implementer met la doc à jour dans la même PR ; le reviewer signale en `major` un changement d'intégration, de flux, de règle de sécurité, de stockage ou de composant sans mise à jour. Hors workflow, `architecture-mapping --refresh` rattrape les écarts. Aucun hook ne contrôle la doc : c'est le rôle du reviewer.
+Lifecycle: the architect reads the map and looks at what changed since each page's last commit; the plan lists the **impact on the docs** (or `none` with the reason, for example a wording change); the implementer updates the docs in the same PR; the reviewer flags as `major` any change to an integration, flow, security rule, storage or component without a docs update. Outside a workflow, `architecture-mapping --refresh` catches up on drift. No hook checks the docs: that is the reviewer's job.
 
-## Garde-fous (hooks)
+## Guardrails (hooks)
 
-Les hooks n'agissent que dans un dépôt où un workflow est actif (`.ai/current` présent, `phase` différent de `done`). La liste complète et à jour des règles est dans [la référence des garde-fous](skills/delivery-workflow/references/gates.md) ; en résumé :
+The hooks only act in a repository where a workflow is active (`.ai/current` present, `phase` other than `done`). The complete, up-to-date list of rules is in [the guardrails reference](skills/delivery-workflow/references/gates.md); in short:
 
-| Règle | Comportement |
+| Rule | Behaviour |
 |---|---|
-| État du workflow | Chaque modification de `state.json` est simulée puis vérifiée : transitions autorisées, brief et plan validés par un message de ta part après leur dernière modification, review `APPROVED` avant `pr-open`, au plus 2 itérations de review, sortie d'`escalated` seulement après ta réponse. `done` passe uniquement par l'étape de clôture. |
-| Rôles | Seul le reviewer écrit `review.md` (et rien d'autre) ; l'implementer n'écrit jamais sous `.ai/` ; l'agent principal te demande confirmation avant d'écrire hors de `.ai/`. Les fichiers des hooks (`.hooks.json`, `log.jsonl`, marqueurs) ne sont jamais écrits par un agent. |
-| Contrôles de fin de tour (`Stop`) | En `build` et `feedback`, pas de fin de tour avec du code non commité ou non relu (`APPROVED` du HEAD) ; en `pr-open`, pas avant le fil **🤖 Workflow record**. Au plus 3 blocages consécutifs. |
-| Commit sans test | En phase `build` ou `feedback`, un `git commit` qui modifie du code sans aucun fichier de test (skill `red-green-refactor`) demande **ta confirmation** : toi seul acceptes un lot sans test, par exemple sur un projet legacy sans tests unitaires ni E2E. |
-| Push | `git push` demande confirmation et ne vise que `ai/<slug>` ; force push, suppression, `--mirror`, `--all` et toute autre destination sont refusés, y compris via alias, `sudo`, `env`, `timeout`, `xargs`, `eval`, `python -c`, variables. |
-| Azure DevOps | Outils MCP en lecture autorisés (liste vérifiée) ; création de la PR draft contrôlée puis confirmée ; mise à jour limitée au titre et à la description de la PR du workflow ; commentaires préfixés `🤖` ; tout le reste est refusé. `az rest`, les écritures `az` et les appels HTTP directs à Azure DevOps sont refusés. |
-| Journal | Chaque décision est ajoutée à `.ai/<slug>/log.jsonl` (secrets masqués). |
+| Workflow state | Every change to `state.json` is simulated then checked: allowed transitions, brief and plan validated by a message from you after their last change, review `APPROVED` before `pr-open`, at most 2 review iterations, leaving `escalated` only after your answer. `done` is reached only through the closing step. |
+| Roles | Only the reviewer writes `review.md` (and nothing else); the implementer never writes under `.ai/`; the main agent asks for your confirmation before writing outside `.ai/`. The hooks' own files (`.hooks.json`, `log.jsonl`, markers) are never written by an agent. |
+| End-of-turn checks (`Stop`) | In `build` and `feedback`, no end of turn with uncommitted or unreviewed code (`APPROVED` for HEAD); in `pr-open`, not before the **🤖 Workflow record** thread exists. At most 3 consecutive blocks. |
+| Commit without tests | In the `build` or `feedback` phase, a `git commit` that changes code without any test file (`red-green-refactor` skill) asks for **your confirmation**: only you accept a batch without tests, for example on a legacy project with no unit or E2E tests. |
+| Push | `git push` asks for confirmation and only targets `ai/<slug>`; force push, deletion, `--mirror`, `--all` and any other destination are refused, including through aliases, `sudo`, `env`, `timeout`, `xargs`, `eval`, `python -c` and variables. |
+| Azure DevOps | Read MCP tools allowed (checked list); draft PR creation checked then confirmed; updates limited to the title and description of the workflow's PR; comments prefixed with `🤖`; everything else is refused. `az rest`, `az` writes and direct HTTP calls to Azure DevOps are refused. |
+| Log | Every decision is appended to `.ai/<slug>/log.jsonl` (secrets masked). |
 
-## Fichiers de travail (`.ai/`, jamais commités)
+## Working files (`.ai/`, never committed)
 
-| Fichier | Contenu |
+| File | Content |
 |---|---|
-| `.ai/current` | Slug actif |
-| `.ai/<slug>/state.json` | Phase, parcours, branches, work item, validations du brief et du plan, lots faits, PR, fil d'archivage, itérations de review, escalade, langue |
-| `.ai/<slug>/brief.md`, `plan.md` | Besoin validé, plan découpé en lots |
-| `.ai/<slug>/review.md` | Dernière review, avec dans l'en-tête `verdict`, `reviewed_sha`, `base_sha` et `iteration` |
-| `.ai/<slug>/pr-description.md`, `feedback.md` | Description de la PR draft, classement des commentaires et learnings |
-| `.ai/<slug>/.hooks.json`, `log.jsonl` | Écrits par les hooks seuls : heartbeat, heure de ton dernier message, journal des décisions |
-| `.ai/<slug>/usage.json` | Écrit par les hooks seuls : tokens par agent et par modèle, exécutions, durées (voir « Coût par agent ») |
-| `.ai/<slug>/.reviewer-active`, `.implementer-active` | Marqueurs écrits par les hooks pendant qu'un subagent tourne |
-| `.ai/archive/<slug>/` | Workflows clos |
+| `.ai/current` | Active slug |
+| `.ai/<slug>/state.json` | Phase, track, branches, work item, brief and plan validations, completed batches, PR, record thread, review iterations, escalation, language |
+| `.ai/<slug>/brief.md`, `plan.md` | Validated need, plan split into batches |
+| `.ai/<slug>/review.md` | Latest review, with `verdict`, `reviewed_sha`, `base_sha` and `iteration` in the header |
+| `.ai/<slug>/pr-description.md`, `feedback.md` | Draft PR description, comment classification and learnings |
+| `.ai/<slug>/.hooks.json`, `log.jsonl` | Written by the hooks only: heartbeat, time of your last message, decision log |
+| `.ai/<slug>/usage.json` | Written by the hooks only: tokens per agent and per model, runs, durations (see "Cost per agent") |
+| `.ai/<slug>/.reviewer-active`, `.implementer-active` | Markers written by the hooks while a subagent runs |
+| `.ai/archive/<slug>/` | Closed workflows |
 
-Ces fichiers restent locaux : le brief et le plan validés survivent à la PR grâce au fil **🤖 Workflow record**, mis à jour en réponse quand le plan change.
+These files stay local: the validated brief and plan outlive the PR thanks to the **🤖 Workflow record** thread, updated with a reply when the plan changes.
 
-## Modèles
+## Models
 
-| Agent | Modèle (avec repli) |
+| Agent | Model (with fallback) |
 |---|---|
 | challenger, architect, security-architect, performance-architect | Claude Opus 5.5 (Claude Opus 5) |
 | builder, implementer, ui-ux-designer | Claude Sonnet 5.5 (Claude Sonnet 5) |
-| reviewer | GPT-6.1 Sol (GPT-6 Astra, puis Gemini 3.1 Pro) : autre famille que l'implementer et l'ui-ux-designer, donc moins d'angles morts partagés. Le nom Gemini est **à confirmer** dans ton sélecteur de modèles. |
+| reviewer | GPT-6.1 Sol (GPT-6 Astra, then Gemini 3.1 Pro): a different family from the implementer and the ui-ux-designer, so fewer shared blind spots. The Gemini name is **to be confirmed** in your model picker. |
 
-En Local, le champ `model` de l'en-tête d'un agent s'applique aux subagents. Pour les agents interactifs, c'est le `model` du handoff (présent sur chaque handoff, y compris **Address PR feedback**) qui choisit le modèle au moment du passage, et le challenger utilise le modèle sélectionné dans le sélecteur. Les noms doivent correspondre exactement à ceux du sélecteur de modèles, au format `<nom> (copilot)`.
+In the Local harness, the `model` field of an agent's header applies to subagents. For interactive agents, the handoff's `model` (present on every handoff, including **Address PR feedback**) picks the model at handoff time, and the challenger uses the model selected in the picker. Names must exactly match those of the model picker, in the `<name> (copilot)` format.
 
-## Portabilité vers le harness Copilot
+## Portability to the Copilot harness
 
-- Le champ `handoffs` est ignoré : il suffit de changer d'agent à la main ; les fichiers `.ai/` portent le contexte d'une étape à l'autre.
-- Les hooks sont déclarés avec des noms d'événements PascalCase et les clés `bash` et `powershell`, reconnues par les deux harnesses. Ils lisent les deux formats d'entrée (`tool_name`/`tool_input` et `toolName`/`toolArgs`) et écrivent leurs décisions dans les deux formats de sortie.
-- Aucun hook n'est déclaré dans l'en-tête des agents. Le harness Copilot ignore aujourd'hui ces hooks pour les agents fournis par un plugin ; ici, ils sont tous au niveau du plugin.
+- The `handoffs` field is ignored: just switch agents by hand; the `.ai/` files carry the context from one step to the next.
+- The hooks are declared with PascalCase event names and the `bash` and `powershell` keys, recognized by both harnesses. They read both input formats (`tool_name`/`tool_input` and `toolName`/`toolArgs`) and write their decisions in both output formats.
+- No hook is declared in the agents' headers. The Copilot harness currently ignores those hooks for plugin-provided agents; here they are all at plugin level.
 
-## Mise à jour
+## Upgrading
 
-1. Termine ou clos les workflows en cours avant de changer de version : un `state.json` écrit par une version antérieure peut ne pas respecter les nouvelles règles de transition.
-2. Clone local : `git pull` dans le dossier du plugin, puis recharge la fenêtre VS Code. Installation depuis la source : réinstalle le plugin.
-3. Lis le [CHANGELOG](CHANGELOG.md). En passant de 0.2.0 à 0.3.0 : les validations du brief et du plan sont désormais des champs de `state.json` (`brief_validated`, `plan_validated`), la clôture passe par `scripts/close_workflow.py`, et un nouveau hook `UserPromptSubmit` est déclaré.
-4. Depuis `ai-delivery-workflow` (avant le renommage) : le plugin s'appelle désormais `ai-driven-dev-harness`. Désinstalle l'ancien plugin ou retire son entrée de `chat.pluginLocations`, puis installe le nouveau. Les dossiers `.ai/`, le skill `delivery-workflow` et la section « AI delivery workflow » d'`AGENTS.md` ne changent pas : les projets déjà onboardés n'ont rien à refaire.
-5. Vérifie que la version affichée dans `.ai/<slug>/.hooks.json` (`heartbeat.version`) est la nouvelle.
+1. Finish or close running workflows before changing versions: a `state.json` written by an earlier version may not satisfy the new transition rules.
+2. Local clone: `git pull` in the plugin folder, then reload the VS Code window. Installed from source: reinstall the plugin.
+3. Read the [CHANGELOG](CHANGELOG.md). Going from 0.2.0 to 0.3.0: brief and plan validations are now `state.json` fields (`brief_validated`, `plan_validated`), closing goes through `scripts/close_workflow.py`, and a new `UserPromptSubmit` hook is declared.
+4. From `ai-delivery-workflow` (before the rename): the plugin is now called `ai-driven-dev-harness`. Uninstall the old plugin or remove its entry from `chat.pluginLocations`, then install the new one. The `.ai/` folders, the `delivery-workflow` skill and the "AI delivery workflow" section of `AGENTS.md` do not change: projects already onboarded have nothing to redo.
+5. Check that the version shown in `.ai/<slug>/.hooks.json` (`heartbeat.version`) is the new one.
 
-## Dépannage
+## Troubleshooting
 
-| Symptôme | Cause probable et solution |
+| Symptom | Likely cause and fix |
 |---|---|
-| Le builder refuse de construire : heartbeat absent ou ancien | Les hooks ne tournent pas : active `chat.useHooks`, approuve le workspace, vérifie `python`/`python3` dans le PATH, puis envoie un message et relance. |
-| `state.json` : « not an allowed transition » ou « wait for their validation » | Le hook protège les étapes : valide explicitement le brief ou le plan dans un message, sans que l'agent ne modifie le fichier ensuite. En cas de blocage, demande une escalade, puis indique la phase voulue. |
-| L'agent principal demande confirmation pour chaque fichier | Normal hors `escalated` : l'agent principal ne code pas. Si cela arrive pendant que l'implementer tourne, l'hôte n'envoie ni `agent_type` ni `agentName` (voir « Points à vérifier »). |
-| Un `git push` est refusé | La destination n'est pas `ai/<slug>`, une option force ou suppression est présente, ou la branche suivie pointe ailleurs (`git branch --unset-upstream`). |
-| Un fil de PR ne change pas de statut | Chaque changement de statut te demande confirmation ; le fil d'archivage ne change jamais de statut. |
-| Le tableau des coûts affiche `n/d` partout | Le transcript de VS Code ne contient pas de compteurs de tokens reconnus : lance `usage_report.py --probe <transcript>` (le chemin est dans `usage.json`, clé `transcripts`) et ouvre une demande avec sa sortie. |
-| Comprendre une décision d'un hook | Lis `.ai/<slug>/log.jsonl` : une ligne par décision, avec la raison, le HEAD et la phase. |
-| Workflow terminé mais les hooks agissent encore | Clos-le : `python <plugin>/scripts/close_workflow.py --repo .` |
-| `onboard.py` sort avec le code 3 | `ado-read` ou `ado-write` existent déjà avec une autre définition : compare, puis relance avec `--force`. |
+| The builder refuses to build: heartbeat missing or stale | The hooks are not running: enable `chat.useHooks`, trust the workspace, check `python`/`python3` on the PATH, then send a message and retry. |
+| `state.json`: "not an allowed transition" or "wait for their validation" | The hook protects the steps: validate the brief or the plan explicitly in a message, without the agent changing the file afterwards. If stuck, ask for an escalation, then state the phase you want. |
+| The main agent asks for confirmation for every file | Expected outside `escalated`: the main agent does not code. If it happens while the implementer is running, the host sends neither `agent_type` nor `agentName` (see "Things to check on first run"). |
+| A `git push` is refused | The destination is not `ai/<slug>`, a force or delete option is present, or the upstream branch points elsewhere (`git branch --unset-upstream`). |
+| A PR thread does not change status | Every status change asks for your confirmation; the record thread never changes status. |
+| The cost table shows `n/a` everywhere | The VS Code transcript has no recognized token counters: run `usage_report.py --probe <transcript>` (the path is in `usage.json`, key `transcripts`) and open an issue with its output. |
+| Understanding a hook decision | Read `.ai/<slug>/log.jsonl`: one line per decision, with the reason, the HEAD and the phase. |
+| Workflow finished but the hooks still act | Close it: `python <plugin>/scripts/close_workflow.py --repo .` |
+| `onboard.py` exits with code 3 | `ado-read` or `ado-write` already exist with a different definition: compare, then rerun with `--force`. |
 
 ## Tests
 
@@ -200,22 +200,22 @@ cd tests
 python -m unittest
 ```
 
-La CI GitHub Actions (`.github/workflows/ci.yml`) lance ces tests sur Ubuntu (Python 3.9 et 3.12), Windows et macOS (Python 3.12) à chaque push sur `main` et sur chaque pull request, plus un job de qualité : `ruff`, `mypy` et la couverture des scripts avec un seuil minimal.
+The GitHub Actions CI (`.github/workflows/ci.yml`) runs these tests on Ubuntu (Python 3.9 and 3.12), Windows and macOS (Python 3.12) on every push to `main` and on every pull request, plus a quality job: `ruff`, `mypy` and script coverage with a minimum threshold.
 
-Couvert par les tests : décisions des hooks (payloads Local et Copilot), corpus de contournements (`tests/test_bypass_corpus.py`), transitions de `state.json`, clôture, journal, exécution des commandes de `hooks.json` dans un vrai shell, alias git, propriété de `review.md` et marqueur du reviewer, contrôles de review et d'archivage sur de vrais dépôts git temporaires, script d'onboarding (dont le squelette de la cartographie), cohérence des skills, des agents et des hooks.
+Covered by the tests: hook decisions (Local and Copilot payloads), bypass corpus (`tests/test_bypass_corpus.py`), `state.json` transitions, closing, log, running the `hooks.json` commands in a real shell, git aliases, `review.md` ownership and the reviewer marker, review and record checks on real temporary git repositories, the onboarding script (including the architecture map skeleton), consistency of skills, agents and hooks.
 
-## Points à vérifier au premier essai
+## Things to check on first run
 
-- La doc VS Code qualifie les hooks du harness Local de « legacy ». Ils fonctionnent, mais l'éditeur évolue vers le harness Copilot.
-- Ouvre l'Agent Debug Log pour vérifier les noms réels des outils (terminal, édition de fichiers, outils MCP `ado-*`). Les hooks reconnaissent les outils Azure DevOps à leur nom, sur un serveur dont le nom contient `ado`, `azure`, `devops` ou `vsts` (ou sans préfixe) ; ils simulent les éditions de fichiers faites avec `create_file`, `replace_string_in_file`, `multi_replace_string_in_file` et `apply_patch`, et refusent sur `state.json` les autres outils d'édition.
-- Si un handoff ou un modèle n'est pas trouvé, ajuste le nom dans l'en-tête de l'agent.
-- Vérifie dans l'Agent Debug Log que `SubagentStart` reçoit bien `agentName: reviewer` (et `implementer`), ou que les appels d'outils des subagents portent `agent_type`. Sinon, l'écriture de `review.md` est refusée au reviewer lui-même, et chaque écriture de l'implementer te demande confirmation.
-- Vérifie que `UserPromptSubmit` est bien reçu : après ton premier message dans un workflow actif, `.ai/<slug>/.hooks.json` doit contenir `user_prompt_at`. Sans lui, les contrôles « tu as répondu après la modification » sont ignorés.
+- The VS Code docs call the Local harness hooks "legacy". They work, but the editor is moving towards the Copilot harness.
+- Open the Agent Debug Log to check the actual tool names (terminal, file editing, `ado-*` MCP tools). The hooks recognize Azure DevOps tools by name, on a server whose name contains `ado`, `azure`, `devops` or `vsts` (or without a prefix); they simulate file edits made with `create_file`, `replace_string_in_file`, `multi_replace_string_in_file` and `apply_patch`, and refuse other editing tools on `state.json`.
+- If a handoff or a model is not found, adjust the name in the agent's header.
+- Check in the Agent Debug Log that `SubagentStart` does receive `agentName: reviewer` (and `implementer`), or that subagent tool calls carry `agent_type`. Otherwise, writing `review.md` is refused to the reviewer itself, and every implementer write asks for your confirmation.
+- Check that `UserPromptSubmit` is received: after your first message in an active workflow, `.ai/<slug>/.hooks.json` must contain `user_prompt_at`. Without it, the "you answered after the change" checks are skipped.
 
-## Limites des garde-fous
+## Guardrail limits
 
-Les hooks protègent contre les erreurs et les dérives d'un agent, pas contre un contournement délibéré : un script écrit sur disque puis exécuté, une variable `GIT_CONFIG_*` ou un serveur MCP Azure DevOps enregistré sous un nom inattendu peuvent passer. Sans workflow actif, aucune règle ne s'applique. La review humaine de la PR draft reste le contrôle final. Les limites restantes sont listées dans [docs/architecture/security.md](docs/architecture/security.md#known-gaps).
+The hooks protect against an agent's mistakes and drift, not against deliberate circumvention: a script written to disk and then run, a `GIT_CONFIG_*` variable or an Azure DevOps MCP server registered under an unexpected name can get through. Without an active workflow, no rule applies. Human review of the draft PR remains the final check. The remaining limits are listed in [docs/architecture/security.md](docs/architecture/security.md#known-gaps).
 
-## Licence
+## License
 
-Aucune licence n'est encore choisie : c'est une décision du propriétaire du dépôt (point ouvert).
+No license has been chosen yet: it is the repository owner's decision (open item).
