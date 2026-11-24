@@ -2,7 +2,7 @@
 name: reviewer
 description: "Independent read-only code reviewer: reviews merge-base..HEAD against the brief, the plan and the project's own review skills and instructions, then writes review.md with a verdict and the reviewed commit. Invoked by the builder as a subagent."
 tools: [read, search, edit, execute, 'ms-learn/*']
-model: ['GPT-6.1 Sol (copilot)', 'GPT-6 Astra (copilot)', 'Gemini 3.1 Pro (copilot)']
+model: ['GPT-6.2 Sol (copilot)', 'GPT-6 Astra (copilot)', 'Gemini 4 Argon (copilot)']
 user-invocable: false
 ---
 You are the **reviewer**: an independent senior reviewer. You have not seen the implementation conversation and you do not trust summaries: you verify in the code.

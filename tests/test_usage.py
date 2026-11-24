@@ -191,6 +191,10 @@ class PricingTestCase(unittest.TestCase):
             ("claude-opus-5-20261001", "Claude Opus 5"),
             ("copilot/gpt-6.1-sol", "GPT-6.1 Sol"),
             ("gpt-6-sol", "GPT-6 Sol"),
+            ("GPT-6.2 Sol (copilot)", "GPT-6.2 Sol"),
+            ("gpt-6.2-sol", "GPT-6.2 Sol"),
+            ("copilot/gpt-6.2-astra", "GPT-6.2 Astra"),
+            ("gpt-6.2-astra-2026-11-17", "GPT-6.2 Astra"),
         ):
             with self.subTest(model=name):
                 self.assertEqual(usage.find_rates(self.pricing, name)["name"], expected)
@@ -198,13 +202,18 @@ class PricingTestCase(unittest.TestCase):
         self.assertIsNone(usage.find_rates(self.pricing, "gemini-3.1-pro"))
 
     def test_long_context_requests(self) -> None:
-        row = usage.find_rates(self.pricing, "GPT-6.1 Sol")
-        for prompt, expected in ((300_000, 1.2), (200_000, 0.4)):
-            with self.subTest(prompt=prompt):
+        for model, prompt, expected in (
+            ("gpt-6.1-sol", 300_000, 1.2),
+            ("gpt-6.1-sol", 200_000, 0.4),
+            ("gpt-6.2-astra", 300_000, 4.8),
+            ("gpt-6.2-astra", 200_000, 1.6),
+        ):
+            with self.subTest(model=model, prompt=prompt):
+                row = usage.find_rates(self.pricing, model)
                 entry: dict = {}
                 tokens = {"input": prompt, "cached_input": 0, "cache_write": 0, "output": 0}
-                usage.add_requests(entry, [{"id": "a", "model": "gpt-6.1-sol", "tokens": tokens}])
-                self.assertAlmostEqual(usage.model_cost_usd(entry["models"]["gpt-6.1-sol"], row), expected)
+                usage.add_requests(entry, [{"id": "a", "model": model, "tokens": tokens}])
+                self.assertAlmostEqual(usage.model_cost_usd(entry["models"][model], row), expected)
 
     def test_unknown_tokens_are_never_invented(self) -> None:
         summary = usage.summarize({"agents": {"reviewer": {"runs": 2, "duration_s": 90, "models": {}}}}, self.pricing)
