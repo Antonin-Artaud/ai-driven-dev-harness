@@ -5,11 +5,11 @@ All notable changes of the `ai-driven-dev-harness` plugin. Versions follow [sema
 ## Unreleased — reviewer on GPT-6.2 Sol
 
 ### Changed
-- The reviewer runs on **GPT-6.2 Sol** instead of GPT-6.1 Sol, at the same rates; its fallbacks (GPT-6 Astra, then Gemini 3.1 Pro) do not change. GitHub reports that GPT-6.2 Sol catches nearly twice as many real issues in code review as GPT-6.1 Sol ([changelog](https://github.blog/changelog/2026-11-17-openais-gpt-6-2-astra-and-gpt-6-2-sol-now-available/)). It is offered on the Copilot Pro+, Max, Business and Enterprise plans; elsewhere the reviewer uses its fallback. The other agents stay on Claude Opus 5.5 and Claude Sonnet 5.5.
+- The reviewer runs on **GPT-6.2 Sol** instead of GPT-6.1 Sol, at the same rates. Its first fallback (GPT-6 Astra) does not change; its Gemini fallback becomes **Gemini 4 Argon**, as Gemini 3.1 Pro is no longer on GitHub's pricing page. GitHub reports that GPT-6.2 Sol catches nearly twice as many real issues in code review as GPT-6.1 Sol ([changelog](https://github.blog/changelog/2026-11-17-openais-gpt-6-2-astra-and-gpt-6-2-sol-now-available/)). It is offered on the Copilot Pro+, Max, Business and Enterprise plans; elsewhere the reviewer uses its fallback. The other agents stay on Claude Opus 5.5 and Claude Sonnet 5.5.
 
 ### Added
 - `scripts/hooks/pricing.json`: GPT-6.2 Sol ($2 input, $0.10 cached input, $2.50 cache write, $10 output per 1M tokens) and GPT-6.2 Astra ($8, $0.40, $10, $40), with the long-context tier above 272K prompt tokens. GitHub's page does not list them yet and GitHub bills them at OpenAI's list price, so these rows copy OpenAI's prices. The other rates are unchanged, checked on 2026-11-24.
-- Tests: the first model of every agent has a row in `pricing.json`, and each handoff names the first model of the agent it opens.
+- Tests: every model named in an agent's header, fallbacks included, has a row in `pricing.json`, and each handoff names the first model of the agent it opens.
 
 ## Unreleased — moved to GitHub
 

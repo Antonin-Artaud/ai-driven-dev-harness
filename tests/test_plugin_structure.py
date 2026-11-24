@@ -237,14 +237,15 @@ class AgentsTestCase(unittest.TestCase):
                 with self.subTest(agent=name, handoff=handoff["label"]):
                     self.assertEqual(handoff.get("model"), found[handoff["agent"]][1]["model"][0])
 
-    def test_first_agent_models_are_priced(self) -> None:
-        """The cost table never shows n/a for the model an agent picks first."""
+    def test_every_agent_model_is_priced(self) -> None:
+        """The cost table never shows n/a for a model the plugin picks, fallbacks included."""
         pricing = json.loads((PLUGIN_ROOT / "scripts" / "hooks" / "pricing.json").read_text(encoding="utf-8"))
         priced = {row["name"] for row in pricing["models"]}
         for name, (_path, meta) in agents().items():
-            with self.subTest(agent=name):
-                self.assertTrue(all(model.endswith(" (copilot)") for model in meta["model"]), "'<name> (copilot)'")
-                self.assertIn(meta["model"][0][: -len(" (copilot)")], priced)
+            for model in meta["model"]:
+                with self.subTest(agent=name, model=model):
+                    self.assertTrue(model.endswith(" (copilot)"), "model picker name: '<name> (copilot)'")
+                    self.assertIn(model[: -len(" (copilot)")], priced)
 
 
 if __name__ == "__main__":
