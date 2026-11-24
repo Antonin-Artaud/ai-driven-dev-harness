@@ -28,7 +28,7 @@ Who uses the plugin, and which external systems it talks to (C4 level 1).
 | System | Use | Source |
 |---|---|---|
 | VS Code + GitHub Copilot (Local harness) | Host: loads the agents, skills and handoffs, and runs the hooks | `README.md`, `com.github.copilot/hooks/hooks.json` |
-| Language models through Copilot | Claude (challenger, architect, builder, implementer) and GPT, with a Gemini fallback (reviewer, another model family) | `com.github.copilot/agents/*.agent.md` |
+| Language models through Copilot | OpenAI GPT-6.2 Sol for every agent but the reviewer; Claude, with a Gemini fallback, for the reviewer (another model family, [ADR 0010](./decisions/0010-gpt-6-2-agents-claude-reviewer.md)) | `com.github.copilot/agents/*.agent.md` |
 | Azure DevOps remote MCP server | Reads work items, repos and wiki (`ado-read`); creates the draft PR and comments (`ado-write`) | `skills/azure-devops/SKILL.md`, `skills/project-onboarding/scripts/onboard.py` |
 | Microsoft Entra ID | Authenticates the MCP servers with the user's identity | `README.md`, `skills/azure-devops/SKILL.md` |
 | Git and the `origin` remote (Azure Repos) | Work branch `ai/<slug>`, push, review baseline | `skills/plan-execution/SKILL.md`, `scripts/hooks/workflow_gate.py`, `plugin.json` |
@@ -38,7 +38,7 @@ Who uses the plugin, and which external systems it talks to (C4 level 1).
 flowchart LR
   dev([Developer]) -->|request, validations| vscode[VS Code + Copilot]
   vscode -->|loads| plugin[ai-driven-dev-harness<br/>agents, skills, hooks]
-  plugin -->|prompts| llm[Claude / GPT models]
+  plugin -->|prompts| llm[GPT / Claude models]
   plugin -->|MCP HTTP| ado[Azure DevOps MCP]
   ado -->|auth| entra[Microsoft Entra ID]
   plugin -->|git| repo[(Azure Repos)]

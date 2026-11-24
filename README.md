@@ -104,7 +104,8 @@ Where the numbers come from: neither VS Code nor Copilot exposes consumption to 
 Limits:
 - It is an **estimate**, not your bill: the exact count is in GitHub, *Billing > Metered usage*.
 - The transcript format is not a stable VS Code API. If it has no token counters, the table says so and shows only runs and durations, with no made-up cost. Then run `usage_report.py --probe <transcript path>`: it lists the file's structure (the keys, never the values) so the reader can be adapted.
-- A model missing from `pricing.json` (for example Gemini 3.1 Pro, not listed by GitHub) shows as `n/a` and the total becomes a minimum (`≥`).
+- A model missing from `pricing.json` (for example one you picked yourself that GitHub does not list) shows as `n/a` and the total becomes a minimum (`≥`). Every model named in the agents' headers has a row (a test checks it).
+- GPT-6.2 Astra and GPT-6.2 Sol are not on GitHub's pricing page yet. GitHub bills them at OpenAI's list price, so their rows copy [OpenAI's prices](https://developers.openai.com/api/docs/pricing) until GitHub publishes its own.
 - Subagents started in parallel share the transcript: their split is approximate.
 
 ## Architecture map (`docs/architecture/`)
@@ -159,9 +160,10 @@ These files stay local: the validated brief and plan outlive the PR thanks to th
 
 | Agent | Model (with fallback) |
 |---|---|
-| challenger, architect, security-architect, performance-architect | Claude Opus 5.5 (Claude Opus 5) |
-| builder, implementer, ui-ux-designer | Claude Sonnet 5.5 (Claude Sonnet 5) |
-| reviewer | GPT-6.1 Sol (GPT-6 Astra, then Gemini 3.1 Pro): a different family from the implementer and the ui-ux-designer, so fewer shared blind spots. The Gemini name is **to be confirmed** in your model picker. |
+| challenger, architect, security-architect, performance-architect, builder, implementer, ui-ux-designer | GPT-6.2 Sol (GPT-6.1 Sol) |
+| reviewer | Claude Opus 5.5 (Claude Opus 5, then Gemini 4 Argon): a different family from the implementer and the ui-ux-designer, so fewer shared blind spots. |
+
+Design: [ADR 0010](docs/architecture/decisions/0010-gpt-6-2-agents-claude-reviewer.md). GPT-6.2 Sol is available on the Copilot Pro+, Max, Business and Enterprise plans ([GitHub changelog](https://github.blog/changelog/2026-11-17-openais-gpt-6-2-astra-and-gpt-6-2-sol-now-available/)); on Business and Enterprise, an administrator can turn them off in the Copilot model policy. Without them, the agents use their fallback. The reviewer needs Claude or Gemini in your plan.
 
 In the Local harness, the `model` field of an agent's header applies to subagents. For interactive agents, the handoff's `model` (present on every handoff, including **Address PR feedback**) picks the model at handoff time, and the challenger uses the model selected in the picker. Names must exactly match those of the model picker, in the `<name> (copilot)` format.
 

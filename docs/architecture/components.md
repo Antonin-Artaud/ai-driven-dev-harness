@@ -16,14 +16,14 @@ The plugin modules, their responsibilities, and where new code goes.
 
 | Agent | Visible | Model | Tools | Skills loaded | Source |
 |---|---|---|---|---|---|
-| `challenger` | yes | Claude Opus | read, search, edit, todo, `ado-read/*` | delivery-workflow, business-challenge, azure-devops | `com.github.copilot/agents/challenger.agent.md` |
-| `architect` | yes | Claude Opus | read, search, edit, todo, agent, web, `ado-read/*` | delivery-workflow, solution-design, architecture-mapping | `com.github.copilot/agents/architect.agent.md` |
-| `builder` | yes | Claude Sonnet | read, search, edit, execute, todo, agent, `ado-read/*`, `ado-write/*` | delivery-workflow, plan-execution, red-green-refactor, azure-devops, pr-feedback | `com.github.copilot/agents/builder.agent.md` |
-| `implementer` | no (subagent) | Claude Sonnet | read, search, edit, execute, todo | plan-execution, red-green-refactor | `com.github.copilot/agents/implementer.agent.md` |
-| `ui-ux-designer` | no (builder subagent) | Claude Sonnet | read, search, edit, execute, todo | ui-ux-design, plan-execution | `com.github.copilot/agents/ui-ux-designer.agent.md` |
-| `security-architect` | yes, and architect subagent | Claude Opus | read, search, edit, todo, web, `ado-read/*` | delivery-workflow, security-design | `com.github.copilot/agents/security-architect.agent.md` |
-| `performance-architect` | yes, and architect subagent | Claude Opus | read, search, edit, todo, web, `ado-read/*` | delivery-workflow, performance-design | `com.github.copilot/agents/performance-architect.agent.md` |
-| `reviewer` | no (subagent) | GPT, then Gemini (another family than the implementer) | read, search, edit, execute | code-review | `com.github.copilot/agents/reviewer.agent.md` |
+| `challenger` | yes | GPT-6.2 Sol | read, search, edit, todo, `ado-read/*` | delivery-workflow, business-challenge, azure-devops | `com.github.copilot/agents/challenger.agent.md` |
+| `architect` | yes | GPT-6.2 Sol | read, search, edit, todo, agent, web, `ado-read/*` | delivery-workflow, solution-design, architecture-mapping | `com.github.copilot/agents/architect.agent.md` |
+| `builder` | yes | GPT-6.2 Sol | read, search, edit, execute, todo, agent, `ado-read/*`, `ado-write/*` | delivery-workflow, plan-execution, red-green-refactor, azure-devops, pr-feedback | `com.github.copilot/agents/builder.agent.md` |
+| `implementer` | no (subagent) | GPT-6.2 Sol | read, search, edit, execute, todo | plan-execution, red-green-refactor | `com.github.copilot/agents/implementer.agent.md` |
+| `ui-ux-designer` | no (builder subagent) | GPT-6.2 Sol | read, search, edit, execute, todo | ui-ux-design, plan-execution | `com.github.copilot/agents/ui-ux-designer.agent.md` |
+| `security-architect` | yes, and architect subagent | GPT-6.2 Sol | read, search, edit, todo, web, `ado-read/*` | delivery-workflow, security-design | `com.github.copilot/agents/security-architect.agent.md` |
+| `performance-architect` | yes, and architect subagent | GPT-6.2 Sol | read, search, edit, todo, web, `ado-read/*` | delivery-workflow, performance-design | `com.github.copilot/agents/performance-architect.agent.md` |
+| `reviewer` | no (subagent) | Claude, then Gemini (another family than the implementer, [ADR 0010](./decisions/0010-gpt-6-2-agents-claude-reviewer.md)) | read, search, edit, execute | code-review | `com.github.copilot/agents/reviewer.agent.md` |
 
 Only the builder has `ado-write`. The builder runs the implementer, the ui-ux-designer (lots marked `Kind: ui`) and the reviewer; the architect runs the security-architect and the performance-architect when the concern is flagged ([ADR 0007](./decisions/0007-specialist-agents.md)). Handoffs link challenger → architect or builder (fast path), architect → builder or challenger, and builder → builder (PR feedback).
 

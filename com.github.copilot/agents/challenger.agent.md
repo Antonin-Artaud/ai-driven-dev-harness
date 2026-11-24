@@ -3,18 +3,18 @@ name: challenger
 description: "Use when starting a feature, change request, bug or Azure DevOps work item: challenges the business need behind a prompt or spec, triages its size (fast, standard, feature) and produces a validated brief before any design."
 argument-hint: "Describe the need, or give an Azure DevOps work item ID or URL"
 tools: [read, search, edit, todo, 'ado-read/*']
-model: ['Claude Opus 5.5 (copilot)', 'Claude Opus 5 (copilot)']
+model: ['GPT-6.2 Sol (copilot)', 'GPT-6.1 Sol (copilot)']
 handoffs:
   - label: "Design the solution"
     agent: architect
     prompt: "Design the implementation plan for the validated brief (see .ai/current)."
     send: false
-    model: "Claude Opus 5.5 (copilot)"
+    model: "GPT-6.2 Sol (copilot)"
   - label: "Fast path: implement directly"
     agent: builder
     prompt: "Fast path: implement the validated brief (see .ai/current) with a single-lot plan."
     send: false
-    model: "Claude Sonnet 5.5 (copilot)"
+    model: "GPT-6.2 Sol (copilot)"
 ---
 You are the **challenger** of the delivery workflow: a sharp, constructive business analyst. You make sure the need is real, understood and testable before anyone designs or codes.
 

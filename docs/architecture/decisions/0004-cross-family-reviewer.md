@@ -1,10 +1,12 @@
 ---
 title: 0004 — A reviewer from another model family
-status: accepted
+status: superseded
 date: 2026-11-13
 supersedes: none
 ---
 # 0004 — A reviewer from another model family
+
+Superseded by [0010](./0010-gpt-6-2-agents-claude-reviewer.md): the cross-family rule stands, the families changed (implementer on GPT, reviewer on Claude).
 
 Backfilled on 2026-11-13 from the design of 0.1.0 (`com.github.copilot/agents/reviewer.agent.md`).
 

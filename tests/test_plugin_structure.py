@@ -230,11 +230,22 @@ class AgentsTestCase(unittest.TestCase):
             with self.subTest(agent=name):
                 self.assertIn("`dotnet-performance` skill", found[name][0].read_text(encoding="utf-8"))
 
-    def test_handoffs_name_a_model(self) -> None:
-        for name, (_path, meta) in agents().items():
+    def test_handoffs_name_the_model_of_their_agent(self) -> None:
+        found = agents()
+        for name, (_path, meta) in found.items():
             for handoff in meta.get("handoffs", []):
                 with self.subTest(agent=name, handoff=handoff["label"]):
-                    self.assertTrue(handoff.get("model"))
+                    self.assertEqual(handoff.get("model"), found[handoff["agent"]][1]["model"][0])
+
+    def test_every_agent_model_is_priced(self) -> None:
+        """The cost table never shows n/a for a model the plugin picks, fallbacks included."""
+        pricing = json.loads((PLUGIN_ROOT / "scripts" / "hooks" / "pricing.json").read_text(encoding="utf-8"))
+        priced = {row["name"] for row in pricing["models"]}
+        for name, (_path, meta) in agents().items():
+            for model in meta["model"]:
+                with self.subTest(agent=name, model=model):
+                    self.assertTrue(model.endswith(" (copilot)"), "model picker name: '<name> (copilot)'")
+                    self.assertIn(model[: -len(" (copilot)")], priced)
 
 
 if __name__ == "__main__":
