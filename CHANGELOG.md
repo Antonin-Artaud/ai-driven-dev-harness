@@ -2,18 +2,14 @@
 
 All notable changes of the `ai-driven-dev-harness` plugin. Versions follow [semantic versioning](https://semver.org/); the version lives in `plugin.json`.
 
-## Unreleased — agents on GPT-6.2
-
-Design: [ADR 0010](docs/architecture/decisions/0010-gpt-6-2-agents-claude-reviewer.md), which supersedes ADR 0004.
+## Unreleased — reviewer on GPT-6.2 Sol
 
 ### Changed
-- Every agent but the reviewer runs on **GPT-6.2 Sol** (fallback GPT-6.1 Sol): the challenger, architect, security-architect and performance-architect instead of Claude Opus 5.5 (Claude Opus 5), the builder, implementer and ui-ux-designer instead of Claude Sonnet 5.5 (Claude Sonnet 5).
-- The reviewer stays in another model family than the implementer: **Claude Opus 5.5** (fallbacks Claude Opus 5, then Gemini 4 Argon), instead of GPT-6.1 Sol (GPT-6 Astra, then Gemini 3.1 Pro). Gemini 3.1 Pro is not on GitHub's pricing page any more.
-- GPT-6.2 Sol is offered on the Copilot Pro+, Max, Business and Enterprise plans; on other plans, the agents use their fallback.
+- The reviewer runs on **GPT-6.2 Sol** instead of GPT-6.1 Sol, at the same rates; its fallbacks (GPT-6 Astra, then Gemini 3.1 Pro) do not change. GitHub reports that GPT-6.2 Sol catches nearly twice as many real issues in code review as GPT-6.1 Sol ([changelog](https://github.blog/changelog/2026-11-17-openais-gpt-6-2-astra-and-gpt-6-2-sol-now-available/)). It is offered on the Copilot Pro+, Max, Business and Enterprise plans; elsewhere the reviewer uses its fallback. The other agents stay on Claude Opus 5.5 and Claude Sonnet 5.5.
 
 ### Added
-- `scripts/hooks/pricing.json`: GPT-6.2 Astra ($8 input, $0.40 cached input, $10 cache write, $40 output per 1M tokens) and GPT-6.2 Sol ($2, $0.10, $2.50, $10), with the long-context tier above 272K prompt tokens; Astra is priced too, for a user who picks it for an interactive agent. GitHub's page does not list them yet and GitHub bills them at OpenAI's list price, so these rows copy OpenAI's prices. The other rates are unchanged, checked on 2026-11-24.
-- Tests: every model named in an agent's header has a row in `pricing.json`, and each handoff names the first model of the agent it opens.
+- `scripts/hooks/pricing.json`: GPT-6.2 Sol ($2 input, $0.10 cached input, $2.50 cache write, $10 output per 1M tokens) and GPT-6.2 Astra ($8, $0.40, $10, $40), with the long-context tier above 272K prompt tokens. GitHub's page does not list them yet and GitHub bills them at OpenAI's list price, so these rows copy OpenAI's prices. The other rates are unchanged, checked on 2026-11-24.
+- Tests: the first model of every agent has a row in `pricing.json`, and each handoff names the first model of the agent it opens.
 
 ## Unreleased — moved to GitHub
 

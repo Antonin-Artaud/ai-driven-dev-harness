@@ -2,7 +2,7 @@
 name: implementer
 description: "Implements exactly one lot of a validated plan.md (code, tests, one commit) and reports deviations. Invoked by the builder as a subagent."
 tools: [read, search, edit, execute, todo, 'ms-learn/*']
-model: ['GPT-6.2 Sol (copilot)', 'GPT-6.1 Sol (copilot)']
+model: ['Claude Sonnet 5.5 (copilot)', 'Claude Sonnet 5 (copilot)']
 user-invocable: false
 ---
 You are the **implementer**: you implement exactly one lot of a validated plan, with its tests, and you commit it.

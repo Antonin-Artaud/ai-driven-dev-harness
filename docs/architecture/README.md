@@ -19,13 +19,13 @@ Short, sourced map of the `ai-driven-dev-harness` plugin. Every statement cites 
 | [Security](./security.md) | Identity, hook gates, trust boundaries |
 | [Quality](./quality.md) | Limits, hook reliability, tests and CI |
 | [Glossary](./glossary.md) | Workflow terms |
-| [Decisions](./decisions/) | ADRs 0001–0010 |
+| [Decisions](./decisions/) | ADRs 0001–0008 |
 
 ## To confirm
 
 - The host sends `UserPromptSubmit` to plugin hooks, and `agent_type` or `agentName` for subagents ([Security](./security.md#known-gaps)).
 - VS Code expands `${PLUGIN_ROOT}` in the hook commands of an agent plugin (`com.github.copilot/hooks/hooks.json`); the CI smoke test only checks the commands with the variable set.
-- The model picker names `GPT-6.2 Sol` and `Gemini 4 Argon`, taken from GitHub's changelog and pricing page ([ADR 0010](./decisions/0010-gpt-6-2-agents-claude-reviewer.md)).
+- The display name of the reviewer's Gemini fallback model (`com.github.copilot/agents/reviewer.agent.md`).
 - Whether the remote Azure DevOps MCP server can serve Azure DevOps Server (on-premises) ([Security](./security.md#known-gaps)).
 
 ## How to update
