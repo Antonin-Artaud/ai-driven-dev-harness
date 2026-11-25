@@ -1,6 +1,6 @@
 ---
 title: Architecture map
-verified_on: 2026-11-13
+verified_on: 2026-11-25
 sources: []
 ---
 # Architecture map
@@ -19,7 +19,7 @@ Short, sourced map of the `ai-driven-dev-harness` plugin. Every statement cites 
 | [Security](./security.md) | Identity, hook gates, trust boundaries |
 | [Quality](./quality.md) | Limits, hook reliability, tests and CI |
 | [Glossary](./glossary.md) | Workflow terms |
-| [Decisions](./decisions/) | ADRs 0001–0008 |
+| [Decisions](./decisions/) | ADRs 0001–0010 |
 
 ## To confirm
 

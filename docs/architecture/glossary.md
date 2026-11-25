@@ -1,6 +1,6 @@
 ---
 title: Glossary
-verified_on: 2026-11-13
+verified_on: 2026-11-25
 sources:
   - skills/delivery-workflow/
   - README.md
@@ -14,6 +14,10 @@ sources:
 | Brief | Validated business need, with Given/When/Then acceptance criteria | `brief.md` |
 | Plan | Implementation plan split into lots, with the documentation impact | `plan.md` |
 | Lot | Coherent, testable increment that ends in one commit | lot |
+| Lot dependencies | Lots a lot needs, or `none`; lots that change a common file are chained | `Depends on:` in `plan.md` |
+| Wave | Lots whose dependencies are all integrated, run at the same time (at most the contract's `Parallel lots`) | `plan-execution` skill |
+| Lot worktree | Git worktree of one lot of a wave, nested in the workflow folder, on a local lot branch | `.ai/<slug>/lot-<n>/`, `ai/<slug>--lot-<n>`, `lot_worktrees` |
+| Integration | Rebase of a lot branch on the work branch, then fast-forward, worktree removed | `plan-execution` skill, lot gate in `stop.py` |
 | Path | Triage result: `fast`, `standard` or `feature` | `state.path` |
 | Handoff | Button that passes from one agent to another with a prefilled, unsent prompt (`send: false`) | `handoffs` |
 | Review gate | Rule that requires an `APPROVED` review of HEAD and a clean working tree | `review_gate` |
@@ -30,7 +34,7 @@ sources:
 | Specialist | security-architect or performance-architect, consulted by the architect when the brief's `Concerns` line or the change calls for it | `security.md`, `performance.md` |
 | SEC-n, PERF-n | Security and performance requirements per lot, with the severity the reviewer uses if they are missed | `plan.md` |
 | Plan deviation | Report from the implementer when the plan is wrong or impossible | `PLAN DEVIATION` |
-| Project contract | "AI delivery workflow" section of `AGENTS.md`: commands, branch, Azure DevOps coordinates, architecture docs | `AGENTS.md` |
+| Project contract | "AI delivery workflow" section of `AGENTS.md`: commands, branch, parallel lots, Azure DevOps coordinates, architecture docs | `AGENTS.md` |
 | Skill precedence | Project skills win over the plugin's skills | `delivery-workflow` skill |
 | AI marker | `🤖` at the start of every comment posted by the workflow | `AI_MARKER` |
 | Architecture map | `docs/architecture/` pages kept up to date by every workflow PR | `architecture-mapping` skill |

@@ -1,6 +1,6 @@
 ---
 title: Components
-verified_on: 2026-11-13
+verified_on: 2026-11-25
 sources:
   - com.github.copilot/agents/
   - skills/
@@ -18,7 +18,7 @@ The plugin modules, their responsibilities, and where new code goes.
 |---|---|---|---|---|---|
 | `challenger` | yes | Claude Opus | read, search, edit, todo, `ado-read/*` | delivery-workflow, business-challenge, azure-devops | `com.github.copilot/agents/challenger.agent.md` |
 | `architect` | yes | Claude Opus | read, search, edit, todo, agent, web, `ado-read/*` | delivery-workflow, solution-design, architecture-mapping | `com.github.copilot/agents/architect.agent.md` |
-| `builder` | yes | Claude Sonnet | read, search, edit, execute, todo, agent, `ado-read/*`, `ado-write/*` | delivery-workflow, plan-execution, red-green-refactor, azure-devops, pr-feedback | `com.github.copilot/agents/builder.agent.md` |
+| `builder` | yes | Claude Sonnet | read, search, edit, execute, todo, agent, `ado-read/*`, `ado-write/*` | delivery-workflow, plan-execution, red-green-refactor, azure-devops, pr-feedback; runs independent lots in parallel lot worktrees when the project contract allows it | `com.github.copilot/agents/builder.agent.md` |
 | `implementer` | no (subagent) | Claude Sonnet | read, search, edit, execute, todo | plan-execution, red-green-refactor | `com.github.copilot/agents/implementer.agent.md` |
 | `ui-ux-designer` | no (builder subagent) | Claude Sonnet | read, search, edit, execute, todo | ui-ux-design, plan-execution | `com.github.copilot/agents/ui-ux-designer.agent.md` |
 | `security-architect` | yes, and architect subagent | Claude Opus | read, search, edit, todo, web, `ado-read/*` | delivery-workflow, security-design | `com.github.copilot/agents/security-architect.agent.md` |
@@ -47,8 +47,8 @@ flowchart LR
 |---|---|---|
 | `delivery-workflow` | Shared conventions: `.ai/` artifacts, `state.json` phases, fast/standard/feature paths, language, project contract, skill precedence, gates | `skills/delivery-workflow/` |
 | `business-challenge` | Challenge the need, Definition of Ready, `brief.md` | `skills/business-challenge/` |
-| `solution-design` | Options, ADR, specialist consultation, checklists (design, testing, reliability), `plan.md` in lots (`Kind: ui | code`), documentation impact | `skills/solution-design/` |
-| `plan-execution` | Builder and implementer procedures, review loop bounded to 2 iterations | `skills/plan-execution/` |
+| `solution-design` | Options, ADR, specialist consultation, checklists (design, testing, reliability), `plan.md` in lots (`Kind: ui | code`, `Depends on`), documentation impact | `skills/solution-design/` |
+| `plan-execution` | Builder and implementer procedures: waves of independent lots in git worktrees, integration by rebase and fast-forward ([ADR 0010](./decisions/0010-parallel-lots-in-git-worktrees.md)), review loop bounded to 2 iterations | `skills/plan-execution/` |
 | `red-green-refactor` | Test-first discipline: failing test, minimal code, refactor; `TDD cycle` evidence in the lot report, checked by the builder; a code commit without tests needs the user's approval (`PreToolUse`) | `skills/red-green-refactor/` |
 | `code-review` | Independent review of `merge-base..HEAD`, severities, `review.md` | `skills/code-review/` |
 | `pr-feedback` | Triage of PR comments (fix, discuss, decline), fixes, `🤖` replies | `skills/pr-feedback/` |
@@ -68,14 +68,14 @@ Precedence rule: the target project's skills win over the plugin's, and the plug
 
 | Module | Responsibility | Source |
 |---|---|---|
-| `workflow_gate.py` | Shared library: input parsing (VS Code Local and Copilot formats), workflow loading without git, git calls, `review.md` front matter, review gate, hook-owned state, heartbeat, decision log and redaction, Azure DevOps coordinates of `origin`, output format | `scripts/hooks/workflow_gate.py` |
-| `state_policy.py` | File edits: simulation of the edit, `state.json` transitions, `review.md` ownership and iteration, hook-owned files, role boundaries | `scripts/hooks/state_policy.py` |
-| `pre_tool_use.py` | `PreToolUse` entry point: shell commands (git push, test-first gate on commits, az, HTTP, wrappers, launchers, interpreters), Azure DevOps MCP tools, then `state_policy` for file edits | `scripts/hooks/pre_tool_use.py` |
-| `stop.py` | Review gate (`build`, `feedback`) and record gate (`pr-open`), consecutive block count | `scripts/hooks/stop.py` |
+| `workflow_gate.py` | Shared library: input parsing (VS Code Local and Copilot formats), workflow loading without git (from a lot worktree too: `find_workflow_root`), lot worktrees (`lot_location`, `lot_worktrees`), git calls, `review.md` front matter, review gate, hook-owned state under a lock (`locked`), subagent markers with one line per run, heartbeat, decision log and redaction, Azure DevOps coordinates of `origin`, output format | `scripts/hooks/workflow_gate.py` |
+| `state_policy.py` | File edits: simulation of the edit, `state.json` transitions, `review.md` ownership and iteration, hook-owned files, role boundaries, lot worktree writes and the main checkout kept free of coding subagents during a wave | `scripts/hooks/state_policy.py` |
+| `pre_tool_use.py` | `PreToolUse` entry point: shell commands (git push, test-first gate on commits, both checked in the checkout they run in; no push or main-checkout commit by coding subagents during a wave; `git worktree add` convention; az, HTTP, wrappers, launchers, interpreters), Azure DevOps MCP tools, then `state_policy` for file edits | `scripts/hooks/pre_tool_use.py` |
+| `stop.py` | Lot gate and review gate (`build`, `feedback`), record gate (`pr-open`), consecutive block count | `scripts/hooks/stop.py` |
 | `user_prompt.py` | `UserPromptSubmit`: time of the user's last prompt, heartbeat | `scripts/hooks/user_prompt.py` |
-| `subagent.py` | `SubagentStart` / `SubagentStop`: subagent markers, usage attribution | `scripts/hooks/subagent.py` |
-| `usage.py` | Token usage per agent read from the session transcript (`usage.json`), pricing (`pricing.json`), cost table | `scripts/hooks/usage.py` |
-| `close_workflow.py` | Close step: `phase: done`, archive, clear `.ai/current` (run by the builder or the user), cost table | `scripts/close_workflow.py` |
+| `subagent.py` | `SubagentStart` / `SubagentStop`: subagent markers (one line per running instance), usage attribution | `scripts/hooks/subagent.py` |
+| `usage.py` | Token usage per agent read from the session transcript (`usage.json`, written under the hook lock), pricing (`pricing.json`), cost table | `scripts/hooks/usage.py` |
+| `close_workflow.py` | Close step: lot worktrees and integrated lot branches removed, `phase: done`, archive, clear `.ai/current` (run by the builder or the user), cost table | `scripts/close_workflow.py` |
 | `usage_report.py` | Cost table of an active or archived workflow (Markdown or JSON), transcript probe | `scripts/usage_report.py` |
 
 Allowed dependencies: every hook imports `workflow_gate.py`; `pre_tool_use.py` also imports `state_policy.py`; nothing outside the Python standard library ([ADR 0003](./decisions/0003-standard-library-python-hooks.md)).

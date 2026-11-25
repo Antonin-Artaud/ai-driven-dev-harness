@@ -1,6 +1,6 @@
 ---
 title: Containers
-verified_on: 2026-11-13
+verified_on: 2026-11-25
 sources:
   - plugin.json
   - com.github.copilot/
@@ -28,7 +28,7 @@ The units that make up the plugin and how they communicate (C4 level 2). Nothing
 - VS Code runs the hooks as subprocesses (`python3` under bash, `python` under PowerShell) with a 15 s timeout, and passes the event as JSON on stdin; each hook answers one JSON object on stdout (`com.github.copilot/hooks/hooks.json`, `scripts/hooks/workflow_gate.py`).
 - The hooks read the workflow state in `.ai/`, write their own state and log there, and call git as a subprocess (`scripts/hooks/workflow_gate.py`).
 - The agents talk to Azure DevOps through the `ado-read` and `ado-write` HTTP MCP servers, declared in the target project's `.vscode/mcp.json` (`skills/project-onboarding/scripts/onboard.py`).
-- The builder delegates to the `implementer` and `reviewer` subagents, which do not see its conversation (`com.github.copilot/agents/builder.agent.md`).
+- The builder delegates to the `implementer` and `reviewer` subagents, which do not see its conversation (`com.github.copilot/agents/builder.agent.md`). Independent lots run in parallel subagents, each in a git worktree nested in `.ai/<slug>/lot-<n>/` ([ADR 0010](./decisions/0010-parallel-lots-in-git-worktrees.md)); the hooks of parallel subagents serialize their writes with a lock (`locked` in `scripts/hooks/workflow_gate.py`).
 
 ```mermaid
 flowchart TB

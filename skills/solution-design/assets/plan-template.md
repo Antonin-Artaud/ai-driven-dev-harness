@@ -38,6 +38,7 @@
 ## Lots
 ### Lot 1 — <title>
 - **Kind:** <code | ui>
+- **Depends on:** <none | lot numbers> (independent lots can run in parallel in git worktrees)
 - **Goal:** …
 - **Tasks:**
   1. `<path>` — <change> — done when <criterion>
@@ -46,6 +47,8 @@
 - **Commit message:** `<type>(<scope>): <summary>`
 
 ### Lot 2 — <title>
+- **Kind:** …
+- **Depends on:** <1 | none>
 - …
 
 ## Documentation impact

@@ -26,7 +26,7 @@ import workflow_gate as wg  # noqa: E402
 
 
 def workflow_directory(repo: Path, slug: Optional[str]) -> Optional[Path]:
-    root = wg.find_repo_root(repo)
+    root = wg.find_workflow_root(repo)
     if root is None:
         return None
     base = root / wg.WORKFLOW_DIR
