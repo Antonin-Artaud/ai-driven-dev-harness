@@ -10,8 +10,8 @@ The workflow turns a prompt, a spec or an Azure DevOps work item into a reviewed
 
 ```
 challenger ─▶ architect ─▶ builder ─▶ draft PR ─▶ user review in Azure DevOps ─▶ builder (PR feedback) ─▶ user publishes
- brief.md      plan.md      ├─ implementer subagent (one code lot at a time)
-               │            ├─ ui-ux-designer subagent (one UI lot at a time)
+ brief.md      plan.md      ├─ implementer subagent (one code lot per run; independent lots in parallel, one git worktree each)
+               │            ├─ ui-ux-designer subagent (one UI lot per run)
                │            └─ reviewer subagent (independent, other model family)
                ├─ security-architect subagent (security.md, when the concern is flagged)
                └─ performance-architect subagent (performance.md, when the concern is flagged)
@@ -34,7 +34,9 @@ All workflow files live under `.ai/` at the repository root. They are excluded f
 | `.ai/<slug>/review.md` | reviewer | Latest review: verdict, reviewed commit, findings |
 | `.ai/<slug>/pr-description.md` | builder | Draft PR description (≤ 4000 characters) |
 | `.ai/<slug>/feedback.md` | builder | Triage of the PR comments and the learnings proposed |
-| `.ai/<slug>/.<subagent>-active` | hooks | Present while that subagent runs (reviewer, implementer, ui-ux-designer, security-architect, performance-architect) |
+| `.ai/<slug>/lot-<n>/` | builder (`git worktree add`) | Git worktree of lot `n` on the local branch `ai/<slug>--lot-<n>` while a parallel wave runs; removed once the lot is integrated (`plan-execution` skill) |
+| `.ai/<slug>/.<subagent>-active` | hooks | Present while that subagent runs (reviewer, implementer, ui-ux-designer, security-architect, performance-architect), one line per running instance |
+| `.ai/<slug>/.lock` | hooks | Held for a moment while a hook rewrites one of its files (parallel subagents) |
 | `.ai/<slug>/.hooks.json` | hooks | Heartbeat, time of the user's last prompt, validation and escalation times, Stop block count |
 | `.ai/<slug>/log.jsonl` | hooks | Append-only log of the hook decisions |
 | `.ai/<slug>/usage.json` | hooks | Tokens per agent and model, runs and durations, read from the session transcript (cost table) |
@@ -58,7 +60,7 @@ Write it with the file edit tools only (a full write or an exact string replacem
 | `work_item` | Azure DevOps work item ID, or `null` | challenger |
 | `brief_validated` | `{"at": "<ISO date>", "head": "<HEAD sha>"}` once the user validated `brief.md` | challenger |
 | `plan_validated` | Same, once the user validated `plan.md` | architect (builder on the fast path) |
-| `lots_done` | Append-only list of `{"lot": <n>, "commit": "<sha>"}`, one per committed lot | builder |
+| `lots_done` | Append-only list of `{"lot": <n>, "commit": "<sha>"}`, one per committed lot, in plan order; a parallel lot once integrated into `ai/<slug>` | builder |
 | `pull_request` | Draft PR ID once created, or `null`; set once | builder |
 | `record_thread` | ID of the workflow record thread on the draft PR, or `null`; set once | builder |
 | `review_iterations` | Reviewer runs in the current build or feedback cycle, 2 at most | builder, before each reviewer run |
@@ -110,7 +112,7 @@ Reply to the user and write the `.ai/` artifacts in the language of the user's r
 
 ## Project contract
 
-Before working, read the project's agent instructions: `AGENTS.md`, `.github/copilot-instructions.md`, and the `*.instructions.md` files whose `applyTo` matches the files you touch. The `AI delivery workflow` section of `AGENTS.md` gives the build, test and lint commands, the base branch, the Azure DevOps organization, project and repository, the architecture docs folder, the domain glossary and an optional skill map. If this section is missing, tell the user and suggest the `project-onboarding` skill before going further.
+Before working, read the project's agent instructions: `AGENTS.md`, `.github/copilot-instructions.md`, and the `*.instructions.md` files whose `applyTo` matches the files you touch. The `AI delivery workflow` section of `AGENTS.md` gives the install, build, test and lint commands, the base branch, whether independent lots may run in parallel (`Parallel lots: up to <n>`; missing or `off`: one lot at a time), the Azure DevOps organization, project and repository, the architecture docs folder, the domain glossary and an optional skill map. If this section is missing, tell the user and suggest the `project-onboarding` skill before going further.
 
 ## Architecture docs
 

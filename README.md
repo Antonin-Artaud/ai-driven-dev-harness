@@ -4,8 +4,8 @@ Agent plugin ([Agent Plugins 1.0](https://agent-plugins.org/) format) for VS Cod
 
 ```
 challenger ─▶ architect ─▶ builder ─▶ draft PR ─▶ your review in Azure DevOps ─▶ builder (feedback) ─▶ you publish
- brief.md      plan.md      ├─ implementer (subagent, one code batch at a time)
-               │            ├─ ui-ux-designer (subagent, one UI batch at a time)
+ brief.md      plan.md      ├─ implementer (subagent, one code batch per run; independent batches in parallel, one git worktree each)
+               │            ├─ ui-ux-designer (subagent, one UI batch per run)
                │            └─ reviewer (independent subagent, different model family)
                ├─ security-architect (subagent when security is at stake: security.md)
                └─ performance-architect (subagent when performance is at stake: performance.md)
@@ -18,11 +18,11 @@ Each step between interactive agents is a **handoff** (`send: false`): you valid
 | Item | Role |
 |---|---|
 | `challenger` (agent) | Challenges the need, triages the request (fast, standard, feature) and produces `brief.md` |
-| `architect` (agent) | Starts from the `docs/architecture/` map, checks it against the code, compares options, challenges your vision and produces `plan.md`, split into batches, with the impact on the docs |
+| `architect` (agent) | Starts from the `docs/architecture/` map, checks it against the code, compares options, challenges your vision and produces `plan.md`, split into batches with their dependencies (`Depends on`), with the impact on the docs |
 | `security-architect` (agent and architect subagent) | Models threats (STRIDE) and writes `security.md`: mitigations, `SEC-n` requirements per batch, residual risk. Does not code. Consulted by the architect when the brief or the change touches security, or started directly by you to analyse a plan |
 | `performance-architect` (agent and architect subagent) | Sets budgets, finds hot paths and volumes, plans measurements and writes `performance.md` with `PERF-n` requirements per batch. Does not code. Consulted the same way |
-| `builder` (agent) | Orchestrates the implementer, ui-ux-designer and reviewer, pushes the branch, opens the draft PR and handles PR comments |
-| `implementer` (hidden subagent) | Implements one batch with TDD (red-green-refactor): tests, code, architecture doc update, one commit |
+| `builder` (agent) | Orchestrates the implementer, ui-ux-designer and reviewer (independent batches in parallel, each in its own git worktree, when the project allows it), pushes the branch, opens the draft PR and handles PR comments |
+| `implementer` (hidden subagent) | Implements one batch with TDD (red-green-refactor): tests, code, architecture doc update, one commit, in the main checkout or in its batch's worktree |
 | `ui-ux-designer` (hidden subagent) | Implements the batches marked `Kind: ui`: the project's design system first, WCAG 2.1 AA accessibility, every state (loading, empty, error…), responsive, i18n, visual evidence when the project can produce it |
 | `reviewer` (hidden subagent) | Reviews `merge-base..HEAD` applying the project's skills first, checks the plan's `SEC-n` and `PERF-n` requirements, the UI checklist for UI batches and the architecture docs, then writes `review.md` |
 | `skills/` | `delivery-workflow`, `business-challenge`, `solution-design`, `security-design`, `performance-design`, `dotnet-performance`, `plan-execution`, `red-green-refactor`, `ui-ux-design`, `code-review`, `pr-feedback`, `azure-devops`, `project-onboarding`, `architecture-mapping` |
@@ -75,7 +75,7 @@ In both cases the workspace must be trusted, otherwise the hooks do not run.
    - it adds `.ai/` to `.git/info/exclude`, without touching the team's `.gitignore`;
    - with `--docs`, it creates the architecture map skeleton in `docs/architecture/` (or `--docs-path <folder>`), without overwriting existing files.
 3. It offers to map the application (`architecture-mapping` skill): it shows you the pages and the "To confirm" items, then commits them on a dedicated branch for a PR.
-4. It drafts the **AI delivery workflow** section of `AGENTS.md`: commands, base branch, glossary and an optional mapping between steps and the project's skills. It asks for your approval before writing.
+4. It drafts the **AI delivery workflow** section of `AGENTS.md`: commands, base branch, whether independent batches may run in parallel (`Parallel lots`, see below), glossary and an optional mapping between steps and the project's skills. It asks for your approval before writing.
 5. Commit `AGENTS.md`, and `.vscode/mcp.json` if git tracks it, on the base branch. The builder requires a clean working tree before creating its `ai/<slug>` branch.
 6. Start `ado-read` and `ado-write` from the MCP view (Entra sign-in), plus `ms-learn` on a .NET project (detected by a `*.sln`, `*.slnx`, `*.csproj` or `global.json`, or forced with `--dotnet`).
 
@@ -84,10 +84,22 @@ In both cases the workspace must be trusted, otherwise the hooks do not run.
 1. Select the **challenger** agent and give your request, or a work item ID or URL.
 2. Answer the questions (at most 5 per turn, each with a default answer) and validate `brief.md`. Then click **Design the solution**, or **Fast path** for a small change.
 3. The **architect** proposes options, challenges your vision and produces `plan.md`. Validate it, then click **Implement the plan**. Depending on the brief (`Concerns` line), it consults the **security-architect** and the **performance-architect**, folds their requirements into the batches and marks the UI batches (`Kind: ui`), which then go to the **ui-ux-designer**.
-4. The **builder** has the batches implemented and the branch reviewed (at most 2 review iterations, otherwise it hands back to you). It pushes the branch, then creates the draft PR linked to the work item; you confirm each of these two actions. It then archives the brief and the plan on the PR in the **🤖 Workflow record** thread.
+4. The **builder** has the batches implemented and the branch reviewed (at most 2 review iterations, otherwise it hands back to you). Independent batches run at the same time when the project allows it (below). It pushes the branch, then creates the draft PR linked to the work item; you confirm each of these two actions. It then archives the brief and the plan on the PR in the **🤖 Workflow record** thread.
 5. Review the draft PR in Azure DevOps and comment.
 6. Back in VS Code, click **Address PR feedback**. The builder enters the `triage` phase, classifies the comments and proposes **learnings**: the reusable rules your comments reveal, to add to the project's skills, its instructions or `AGENTS.md`. **You validate the classification and each learning**, then it fixes, commits the learnings separately (`docs(agents): …`), has the changes reviewed and replies to each thread. A comment made once does not have to be made again on the next PR.
-7. Publish the PR yourself, then ask the builder to **close** the workflow (or run `python <plugin>/scripts/close_workflow.py --repo .`): `phase` becomes `done`, `.ai/<slug>/` is archived in `.ai/archive/` and `.ai/current` is removed. You confirm the closing. The builder then shows you the **cost per agent** (below).
+7. Publish the PR yourself, then ask the builder to **close** the workflow (or run `python <plugin>/scripts/close_workflow.py --repo .`): leftover batch worktrees are removed, `phase` becomes `done`, `.ai/<slug>/` is archived in `.ai/archive/` and `.ai/current` is removed. You confirm the closing. The builder then shows you the **cost per agent** (below).
+
+## Parallel batches (git worktrees)
+
+By default the builder implements one batch after the other. When the project contract says `Parallel lots: up to <n>` (2 to 4) in the **AI delivery workflow** section of `AGENTS.md`, independent batches run at the same time:
+
+1. The architect gives each batch a `Depends on` line (`none` or batch numbers). Batches that change a common file (dependency registration, migrations, lockfiles, changelog…) are chained.
+2. The builder groups the batches whose dependencies are done into a **wave** and creates one git worktree per batch, nested in the workflow folder: `.ai/<slug>/lot-<n>/`, on a local branch `ai/<slug>--lot-<n>` that is never pushed.
+3. One implementer (or ui-ux-designer) per batch works in its worktree, in parallel: it installs the dependencies there, runs the tests there and commits on its batch branch.
+4. The builder integrates the batches in plan order: `git rebase` of the batch branch on `ai/<slug>`, then `git merge --ff-only`, then removes the worktree and the batch branch. A conflict is resolved in the batch's worktree by an implementer. The work branch keeps one commit per batch and a linear history.
+5. Once the wave is integrated, the builder runs the tests on `ai/<slug>`, then the next wave starts; the review covers the whole branch as before.
+
+Enable it only when the install and test commands work in a fresh checkout without untracked local files (`.env`, local settings) and two test runs at once share no database, port or file. The hooks keep the batches apart (see "Guardrails"), and the design is in [ADR 0010](docs/architecture/decisions/0010-parallel-lots-in-git-worktrees.md).
 
 ## Cost per agent
 
@@ -133,10 +145,11 @@ The hooks only act in a repository where a workflow is active (`.ai/current` pre
 | Rule | Behaviour |
 |---|---|
 | Workflow state | Every change to `state.json` is simulated then checked: allowed transitions, brief and plan validated by a message from you after their last change, review `APPROVED` before `pr-open`, at most 2 review iterations, leaving `escalated` only after your answer. `done` is reached only through the closing step. |
-| Roles | Only the reviewer writes `review.md` (and nothing else); the implementer never writes under `.ai/`; the main agent asks for your confirmation before writing outside `.ai/`. The hooks' own files (`.hooks.json`, `log.jsonl`, markers) are never written by an agent. |
-| End-of-turn checks (`Stop`) | In `build` and `feedback`, no end of turn with uncommitted or unreviewed code (`APPROVED` for HEAD); in `pr-open`, not before the **🤖 Workflow record** thread exists. At most 3 consecutive blocks. |
+| Roles | Only the reviewer writes `review.md` (and nothing else); the implementer never writes under `.ai/` (except code in its batch worktree `.ai/<slug>/lot-<n>/`) and, while batch worktrees exist, neither writes nor commits in the main checkout; the main agent asks for your confirmation before writing outside `.ai/`. The hooks' own files (`.hooks.json`, `log.jsonl`, `.lock`, markers) are never written by an agent. |
+| End-of-turn checks (`Stop`) | In `build` and `feedback`, no end of turn while a batch worktree is left, or with uncommitted or unreviewed code (`APPROVED` for HEAD); in `pr-open`, not before the **🤖 Workflow record** thread exists. At most 3 consecutive blocks. |
 | Commit without tests | In the `build` or `feedback` phase, a `git commit` that changes code without any test file (`red-green-refactor` skill) asks for **your confirmation**: only you accept a batch without tests, for example on a legacy project with no unit or E2E tests. |
-| Push | `git push` asks for confirmation and only targets `ai/<slug>`; force push, deletion, `--mirror`, `--all` and any other destination are refused, including through aliases, `sudo`, `env`, `timeout`, `xargs`, `eval`, `python -c` and variables. |
+| Push | `git push` asks for confirmation and only targets `ai/<slug>`, checked in the checkout the command runs in (`cd`, `git -C`); force push, deletion, `--mirror`, `--all`, batch branches and any other destination are refused, including through aliases, `sudo`, `env`, `timeout`, `xargs`, `eval`, `python -c` and variables. The implementer and the ui-ux-designer never push. |
+| Worktrees | `git worktree add` outside the batch convention (`.ai/<slug>/lot-<n>` on `ai/<slug>--lot-<n>`) asks for your confirmation; inside a batch worktree, every rule above applies. |
 | Azure DevOps | Read MCP tools allowed (checked list); draft PR creation checked then confirmed; updates limited to the title and description of the workflow's PR; comments prefixed with `🤖`; everything else is refused. `az rest`, `az` writes and direct HTTP calls to Azure DevOps are refused. |
 | Log | Every decision is appended to `.ai/<slug>/log.jsonl` (secrets masked). |
 
@@ -151,7 +164,8 @@ The hooks only act in a repository where a workflow is active (`.ai/current` pre
 | `.ai/<slug>/pr-description.md`, `feedback.md` | Draft PR description, comment classification and learnings |
 | `.ai/<slug>/.hooks.json`, `log.jsonl` | Written by the hooks only: heartbeat, time of your last message, decision log |
 | `.ai/<slug>/usage.json` | Written by the hooks only: tokens per agent and per model, runs, durations (see "Cost per agent") |
-| `.ai/<slug>/.reviewer-active`, `.implementer-active` | Markers written by the hooks while a subagent runs |
+| `.ai/<slug>/.reviewer-active`, `.implementer-active` | Markers written by the hooks while a subagent runs (one line per running instance) |
+| `.ai/<slug>/lot-<n>/` | Git worktree of batch `n` while a parallel wave runs; removed once the batch is integrated, or by the closing step |
 | `.ai/archive/<slug>/` | Closed workflows |
 
 These files stay local: the validated brief and plan outlive the PR thanks to the **🤖 Workflow record** thread, updated with a reply when the plan changes.
@@ -180,7 +194,8 @@ In the Local harness, the `model` field of an agent's header applies to subagent
 2. Local clone: `git pull` in the plugin folder, then reload the VS Code window. Installed from source: reinstall the plugin.
 3. Read the [CHANGELOG](CHANGELOG.md). Going from 0.2.0 to 0.3.0: brief and plan validations are now `state.json` fields (`brief_validated`, `plan_validated`), closing goes through `scripts/close_workflow.py`, and a new `UserPromptSubmit` hook is declared.
 4. From `ai-delivery-workflow` (before the rename): the plugin is now called `ai-driven-dev-harness`. Uninstall the old plugin or remove its entry from `chat.pluginLocations`, then install the new one. The `.ai/` folders, the `delivery-workflow` skill and the "AI delivery workflow" section of `AGENTS.md` do not change: projects already onboarded have nothing to redo.
-5. Check that the version shown in `.ai/<slug>/.hooks.json` (`heartbeat.version`) is the new one.
+5. Parallel batches are opt-in: projects already onboarded keep one batch at a time until you add `Parallel lots: up to <n>` to the **AI delivery workflow** section of their `AGENTS.md` (see "Parallel batches").
+6. Check that the version shown in `.ai/<slug>/.hooks.json` (`heartbeat.version`) is the new one.
 
 ## Troubleshooting
 
@@ -194,6 +209,8 @@ In the Local harness, the `model` field of an agent's header applies to subagent
 | The cost table shows `n/a` everywhere | The VS Code transcript has no recognized token counters: run `usage_report.py --probe <transcript>` (the path is in `usage.json`, key `transcripts`) and open an issue with its output. |
 | Understanding a hook decision | Read `.ai/<slug>/log.jsonl`: one line per decision, with the reason, the HEAD and the phase. |
 | Workflow finished but the hooks still act | Close it: `python <plugin>/scripts/close_workflow.py --repo .` |
+| The builder cannot end its turn: "Lot gate" | A batch worktree `.ai/<slug>/lot-<n>/` is left: ask the builder to integrate and remove it, or to escalate. |
+| Closing refuses: "lot worktrees cannot be removed" | A batch worktree holds uncommitted work, or is not a git worktree: commit and integrate it, or discard it yourself (`git worktree remove --force <path>`), then close again. |
 | `onboard.py` exits with code 3 | `ado-read` or `ado-write` already exist with a different definition: compare, then rerun with `--force`. |
 
 ## Tests
@@ -205,7 +222,7 @@ python -m unittest
 
 The GitHub Actions CI (`.github/workflows/ci.yml`) runs these tests on Ubuntu (Python 3.9 and 3.12), Windows and macOS (Python 3.12) on every push to `main` and on every pull request, plus a quality job: `ruff`, `mypy` and script coverage with a minimum threshold.
 
-Covered by the tests: hook decisions (Local and Copilot payloads), bypass corpus (`tests/test_bypass_corpus.py`), `state.json` transitions, closing, log, running the `hooks.json` commands in a real shell, git aliases, `review.md` ownership and the reviewer marker, review and record checks on real temporary git repositories, the onboarding script (including the architecture map skeleton), consistency of skills, agents and hooks.
+Covered by the tests: hook decisions (Local and Copilot payloads), bypass corpus (`tests/test_bypass_corpus.py`), `state.json` transitions, closing, log, running the `hooks.json` commands in a real shell, git aliases, `review.md` ownership and the reviewer marker, review and record checks on real temporary git repositories, batch worktrees (workflow found from a worktree, git commands checked in their checkout, parallel subagent markers, the documented integration, closing with leftover worktrees), the onboarding script (including the architecture map skeleton), consistency of skills, agents and hooks.
 
 ## Things to check on first run
 

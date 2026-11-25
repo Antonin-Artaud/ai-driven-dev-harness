@@ -12,9 +12,10 @@ The hooks (`com.github.copilot/hooks/hooks.json`, scripts in `scripts/hooks/`) o
 | `.ai/<slug>/review.md` | the reviewer subagent only | file edit tools; `iteration` must equal `review_iterations` (1 or 2) |
 | `.ai/<slug>/security.md`, `performance.md` | the security-architect, the performance-architect (or the main agent when the user runs the specialist directly) | file edit tools; denied to every other subagent |
 | `.ai/current` | challenger, close step | cannot switch away while the workflow is in `build`, `pr-open`, `triage` or `feedback` |
-| `.ai/<slug>/.hooks.json`, `log.jsonl`, `usage.json`, `.<subagent>-active` markers | the hooks only | never written by an agent |
+| `.ai/<slug>/.hooks.json`, `log.jsonl`, `usage.json`, `.lock`, `.<subagent>-active` markers | the hooks only | never written by an agent |
+| `.ai/<slug>/lot-<n>/` (lot worktree of a parallel wave) | the coding subagents, inside it | code only: its `.git` link and an `.ai/` folder inside it are never edited |
 
-None of these files is ever written from the shell (`>`, `Set-Content`, `cp`, `sed -i`, `python -c` ...).
+None of these files is ever written from the shell (`>`, `Set-Content`, `cp`, `sed -i`, `python -c` ...). Paths are compared once `.` and `..` segments are collapsed (`.ai/<slug>/lot-2/../state.json` is `state.json`).
 
 ## Phase transitions (state.json)
 
@@ -45,14 +46,15 @@ Other rules on every edit:
 | Caller | Rule |
 |---|---|
 | reviewer subagent | writes `review.md` only; any other file write is denied |
-| implementer and ui-ux-designer subagents | never write under `.ai/` |
+| implementer and ui-ux-designer subagents | never write under `.ai/`, except code inside a lot worktree `.ai/<slug>/lot-<n>/`; while a lot worktree exists, never write or commit in the main checkout; never push |
 | security-architect, performance-architect subagents | write only their own file (`security.md`, `performance.md`); no code, no `plan.md` |
-| main agent (challenger, architect, builder) | writing outside `.ai/` asks the user in every phase except `escalated` |
+| main agent (challenger, architect, builder) | writing outside `.ai/`, or inside a lot worktree, asks the user in every phase except `escalated` |
 
-The caller is recognized by the `agent_type` field of hooks fired in a subagent, or by the `.<subagent>-active` markers written by `SubagentStart` and removed by `SubagentStop` and `Stop` (the reviewer marker only lets `review.md` through). The hooks cannot tell the challenger, the architect and the builder apart: the main-agent rule is enforced by phase.
+The caller is recognized by the `agent_type` field of hooks fired in a subagent, or by the `.<subagent>-active` markers written by `SubagentStart` and removed by `SubagentStop` and `Stop` (the reviewer marker only lets `review.md` through). A marker holds one line per running instance and disappears with the last one, so parallel lots keep their identity until the last implementer stops. The hooks cannot tell the challenger, the architect and the builder apart: the main-agent rule is enforced by phase.
 
 ## Stop gates
 
+- **Lot gate:** in `build` and `feedback`, the main agent cannot finish while a lot worktree `.ai/<slug>/lot-<n>/` exists: integrate the lot, remove its worktree and delete its branch, or escalate.
 - **Review gate:** in `build` and `feedback`, the main agent cannot finish while there are uncommitted changes (untracked files that existed when the build started excepted), or while `review.md` is missing, stale (`reviewed_sha` ≠ HEAD) or not `APPROVED`. After 2 iterations the message asks to escalate.
 - **Record gate:** in `pr-open`, once the draft PR exists, the main agent cannot finish until `record_thread` is set.
 - The Stop hook blocks at most 3 times in a row, then lets the stop through and logs it. A user prompt or an allowed stop resets the count.
@@ -66,13 +68,17 @@ The caller is recognized by the `agent_type` field of hooks fired in a subagent,
 | any other destination (`main`, `ai/x:main`, `HEAD:refs/heads/main`, tags), or an upstream that is not `ai/<slug>` | deny |
 | a push with variables or substitutions (`$BRANCH`, `$g push`, `` `git` push ``) | ask, or deny when a force option is visible (`$'-f'`) |
 | `eval`, `python -c`, `node -e`, `perl -e`, `ruby -e`, `php -r`, or shells nested deeper than 2 levels, mentioning git, az or Azure DevOps | ask, or deny for a force push |
-| `git commit` in `build` or `feedback` that changes code files without any test file (`red-green-refactor` skill) | ask: only the user accepts a lot without tests |
+| `git commit` in `build` or `feedback` that changes code files without any test file (`red-green-refactor` skill), checked in the checkout it runs in (main or lot worktree) | ask: only the user accepts a lot without tests |
+| `git commit` in `build` or `feedback` in a folder the hooks cannot resolve (`cd $X`, `cd -`, `--git-dir`, `--work-tree`) | ask |
+| `git commit` by the implementer or the ui-ux-designer in the main checkout while a lot worktree exists | deny: name the lot worktree (`git -C <worktree> commit`) |
+| `git push` by the implementer or the ui-ux-designer | deny |
+| `git worktree add` other than `-b ai/<slug>--lot-<n> .ai/<slug>/lot-<n>` (or the existing lot branch), or with `-B` or `--detach` | ask |
 | the close step (`close_workflow.py`) | ask |
 | `az rest`, `az repos policy`, `az repos pr` writes, `az boards work-item` writes, `az devops invoke` writes, any `az devops/repos/boards/pipelines/artifacts` write verb (`create`, `update`, `delete`, `run` ...) | deny |
 | other `az devops/repos/boards/pipelines/artifacts` commands that are not `list` or `show` | ask |
 | `curl`, `wget`, `Invoke-RestMethod`, `Invoke-WebRequest` to `dev.azure.com` or `*.visualstudio.com` | deny |
 
-The parser follows `;`, `&&`, `|`, subshells, wrappers and their options (`sudo -u`, `env -i`, `env -S`, `timeout`, `nice`, `xargs`, `find -exec`, `nohup`, `time`), launchers (`bash -c`, `cmd /c`, `pwsh -Command`, `iex`, `eval`), simple variables assigned on the same line (`g=git; $g push`), and git aliases (`-c alias.*`, `git config alias.*` on the same line, the git config, `!` shell aliases).
+The parser follows `;`, `&&`, `|`, subshells, wrappers and their options (`sudo -u`, `env -i`, `env -S`, `timeout`, `nice`, `xargs`, `find -exec`, `nohup`, `time`), launchers (`bash -c`, `cmd /c`, `pwsh -Command`, `iex`, `eval`), simple variables assigned on the same line (`g=git; $g push`), git aliases (`-c alias.*`, `git config alias.*` on the same line, the git config, `!` shell aliases), and the folder a git command runs in (`cd`, `pushd`, `Set-Location` on the same line, `git -C`): a push or a commit is checked in that checkout. It does not see a `cd` run by an earlier command in the same terminal.
 
 ## Azure DevOps MCP tools
 

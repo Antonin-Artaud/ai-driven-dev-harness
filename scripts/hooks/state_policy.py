@@ -9,6 +9,9 @@ Covers every file edit tool call while a workflow is active:
 * Hook-owned files (``.hooks.json``, ``log.jsonl``, subagent markers) are never written by agents.
 * Role boundaries: the reviewer writes only ``review.md``; the implementer never writes under
   ``.ai/``; the main agent (challenger, architect, builder) is asked before writing outside ``.ai/``.
+* Lot worktrees (``.ai/<slug>/lot-<n>/``, parallel lots, ADR 0010) hold code, not workflow files: the
+  coding subagents write there, the others follow their rules for code. While one exists, the coding
+  subagents write only inside lot worktrees, never in the main checkout.
 """
 
 from __future__ import annotations
@@ -202,9 +205,23 @@ def strings_in(value: Any) -> List[str]:
 
 
 def ai_relative(path: str) -> Optional[str]:
-    """``<slug>/state.json`` for any path inside a ``.ai/`` folder, else None."""
-    match = _AI_PATH_RE.search(path.replace("\\", "/"))
+    """``<slug>/state.json`` for any path inside a ``.ai/`` folder, else None.
+
+    ``.`` and ``..`` segments are collapsed first: ``.ai/<slug>/lot-2/../state.json`` is ``state.json``.
+    """
+    match = _AI_PATH_RE.search(wg.normalize_path(path))
     return match.group(1).strip("/").lower() if match else None
+
+
+def lot_parts(relative: str, workflow: wg.Workflow) -> Optional[Tuple[int, str]]:
+    """(lot, path inside the worktree) when ``relative`` (from ``ai_relative``) is in a lot worktree of the workflow."""
+    parts = relative.split("/", 2)
+    if len(parts) < 2 or parts[0] != workflow.slug:
+        return None
+    match = wg.LOT_DIR_RE.match(parts[1])
+    if not match:
+        return None
+    return int(match.group(1)), parts[2] if len(parts) > 2 else ""
 
 
 # --- identity ----------------------------------------------------------------------------------
@@ -511,6 +528,17 @@ def evaluate_ai_write(
     return NO_DECISION
 
 
+def evaluate_lot_write(workflow: wg.Workflow, who: str, lot: int, inner: str, path: str) -> Decision:
+    """A write inside the lot worktree ``.ai/<slug>/lot-<n>/``: code of a parallel lot."""
+    first = inner.split("/", 1)[0]
+    if not inner or first in (".git", wg.WORKFLOW_DIR):
+        return deny(
+            f"{path} is the git link or the .ai/ folder of lot worktree {lot}: the builder manages lot worktrees with "
+            f"git worktree commands, and the workflow files live in the main checkout's .ai/{workflow.slug}/."
+        )
+    return evaluate_outside_write(workflow, who, path, in_lot=lot)
+
+
 def evaluate_file_write(hook: wg.HookInput, workflow: Optional[wg.Workflow]) -> Tuple[Decision, Effects]:
     effects = Effects()
     if not FILE_WRITE_TOOL_RE.search(hook.tool_name) or workflow is None:
@@ -521,9 +549,13 @@ def evaluate_file_write(hook: wg.HookInput, workflow: Optional[wg.Workflow]) -> 
     seen_ai = False
     for write in writes:
         relative = ai_relative(write.path)
+        lot = lot_parts(relative, workflow) if relative is not None else None
+        if lot is not None:
+            decision = most_restrictive(decision, evaluate_lot_write(workflow, who, lot[0], lot[1], write.path))
+            continue
         if relative is None:
             if not MCP_TOOL_RE.search(hook.tool_name):  # MCP tools write remote resources, not local files
-                decision = most_restrictive(decision, evaluate_outside_write(workflow, who, write.path))
+                decision = most_restrictive(decision, evaluate_outside_write(workflow, who, write.path, cwd=hook.cwd))
             continue
         seen_ai = True
         decision = most_restrictive(decision, evaluate_ai_write(hook, workflow, relative, write, who, effects))
@@ -543,11 +575,24 @@ def evaluate_file_write(hook: wg.HookInput, workflow: Optional[wg.Workflow]) -> 
     return decision, effects
 
 
-def evaluate_outside_write(workflow: wg.Workflow, who: str, path: str) -> Decision:
+def evaluate_outside_write(
+    workflow: wg.Workflow, who: str, path: str, cwd: Optional[str] = None, in_lot: Optional[int] = None
+) -> Decision:
+    """A code write (outside ``.ai/``, or inside lot worktree ``in_lot``)."""
     if who == "reviewer":
         return deny(f"the reviewer is read-only on the code: it only writes review.md (tried {path}).")
     if who in wg.SPECIALIST_FILES:
         return deny(f"the {who} does not write code: it only writes .ai/<slug>/{wg.SPECIALIST_FILES[who]}.")
+    if who in wg.CODING_AGENTS and in_lot is None:
+        lots = workflow.lot_worktrees()
+        if lots and in_main_checkout(workflow, path, cwd):
+            names = ", ".join(f".ai/{workflow.slug}/{lot.name}/" for lot in lots)
+            return deny(
+                f"lot worktrees are open ({names}): during a parallel wave the {who} writes only inside the "
+                f"worktree of its lot, never in the main checkout (tried {path}). Use the absolute path inside "
+                "your lot worktree (plan-execution skill). If no wave is running, the builder integrates and "
+                "removes the leftover lot worktrees first."
+            )
     if who != "main" or workflow.phase == "escalated":
         return NO_DECISION
     if workflow.phase in ("challenge", "design"):
@@ -560,6 +605,14 @@ def evaluate_outside_write(workflow: wg.Workflow, who: str, path: str) -> Decisi
         f"Phase '{workflow.phase}': the builder delegates code changes to the implementer subagent. "
         f"Allow the main agent to write {path}?",
     )
+
+
+def in_main_checkout(workflow: wg.Workflow, path: str, cwd: Optional[str]) -> bool:
+    """``path`` (absolute, or relative to the hook's folder) is in the checkout that holds ``.ai/``."""
+    target = Path(path)
+    if not target.is_absolute():
+        target = Path(cwd or workflow.root) / target
+    return wg.is_inside(target, workflow.root) and not wg.is_inside(target, workflow.root / wg.WORKFLOW_DIR)
 
 
 def apply_effects(workflow: Optional[wg.Workflow], effects: Effects) -> None:

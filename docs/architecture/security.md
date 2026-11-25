@@ -1,6 +1,6 @@
 ---
 title: Security
-verified_on: 2026-11-13
+verified_on: 2026-11-25
 sources:
   - scripts/hooks/
   - scripts/close_workflow.py
@@ -24,11 +24,12 @@ How the plugin limits what the agents can do with the user's identity.
 1. **Tools per agent**: among the interactive agents, only the builder has `ado-write/*` and `execute`; the challenger, the architect, the security-architect and the performance-architect have neither (`com.github.copilot/agents/`).
 2. **MCP server filtering**: `ado-read` is read-only (`X-MCP-Readonly: true`), `ado-write` is limited to two tools (`X-MCP-Tools`) (`onboard.py`). On .NET projects, `ms-learn` (Microsoft Learn documentation, public and read-only, [learn.microsoft.com/training/support/mcp](https://learn.microsoft.com/en-us/training/support/mcp)) has no Azure DevOps access; the hooks do not treat its tools as Azure DevOps tools and log its fetches.
 3. **Hooks**, active only while a workflow is running. Their rules are listed once, in the [gates reference](../../skills/delivery-workflow/references/gates.md):
-   - `PreToolUse` (`scripts/hooks/pre_tool_use.py`): shell commands (git push destinations and options, az, HTTP calls to Azure DevOps, eval and interpreter one-liners), Azure DevOps MCP tools (read allow-list, draft PR gate, PR and comment scoping);
-   - file edits (`scripts/hooks/state_policy.py`): `state.json` transitions simulated and validated, `review.md` written by the reviewer only, `security.md` and `performance.md` by their specialist only, hook-owned files, role boundaries (the ui-ux-designer has the implementer's rights);
-   - `Stop` (`scripts/hooks/stop.py`): review gate and record gate, at most 3 consecutive blocks;
+   - `PreToolUse` (`scripts/hooks/pre_tool_use.py`): shell commands (git push destinations and options, checked in the checkout the command runs in; no push by the coding subagents; az, HTTP calls to Azure DevOps, eval and interpreter one-liners; `git worktree add` outside the lot convention), Azure DevOps MCP tools (read allow-list, draft PR gate, PR and comment scoping);
+   - file edits (`scripts/hooks/state_policy.py`): `state.json` transitions simulated and validated, `review.md` written by the reviewer only, `security.md` and `performance.md` by their specialist only, hook-owned files, role boundaries (the ui-ux-designer has the implementer's rights; lot worktrees hold code; during a wave the coding subagents stay out of the main checkout); paths are compared with `.` and `..` collapsed;
+   - `Stop` (`scripts/hooks/stop.py`): lot gate, review gate and record gate, at most 3 consecutive blocks;
    - `UserPromptSubmit` (`scripts/hooks/user_prompt.py`): records the time of the user's last prompt, which validations and exits from `escalated` require;
-   - `SubagentStart` / `SubagentStop` (`scripts/hooks/subagent.py`): reviewer and implementer markers.
+   - `SubagentStart` / `SubagentStop` (`scripts/hooks/subagent.py`): subagent markers, one line per running instance.
+   The gates also apply inside a lot worktree `.ai/<slug>/lot-<n>/` of a parallel wave: the hooks find the workflow of the checkout it is nested in ([ADR 0010](./decisions/0010-parallel-lots-in-git-worktrees.md)).
 4. **Close step** (`scripts/close_workflow.py`): the only way to `done`, confirmed by the user through the `PreToolUse` hook.
 5. **Decision log** (`.ai/<slug>/log.jsonl`, `log_event` in `workflow_gate.py`): every deny, ask, Stop block and web tool call, with credentials redacted (`redact`).
 
@@ -74,3 +75,6 @@ Still open:
 - **Shell commands of the reviewer** are limited to inspection by its instructions only.
 - **Azure DevOps Server (on-premises)**: whether the remote MCP server can serve it is **To confirm**; `onboard.py` generates no MCP configuration for such remotes.
 - **Pushes to another remote** (`git push https://other/repo ai/<slug>`) are only checked for the branch name.
+- **Folder of a shell command.** The hooks follow `cd`, `pushd`, `Set-Location` and `git -C` within one command line, not a `cd` run by an earlier command in the same terminal: a bare `git commit` there is checked in the hook's folder. During a parallel wave this fails closed for the coding subagents (a commit that seems to land in the main checkout is denied, they never push); a main agent that moved its terminal into a lot worktree gets a push checked against the main checkout's branch, whose upstream rules still apply.
+- **Lot ownership.** The hooks know that an implementer runs, not which lot it was given: an implementer writing in another lot's worktree is not detected. The builder's integration (rebase, tests on the integrated branch) and the review catch the result.
+- **Lot worktree contents.** Files written inside a lot worktree from the shell, and its git configuration, are not inspected; the lot branches are local and never pushed (destination rule).

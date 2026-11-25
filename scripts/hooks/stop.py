@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Stop hook of the ai-driven-dev-harness plugin: the review gate and the record gate.
+"""Stop hook of the ai-driven-dev-harness plugin: the lot gate, the review gate and the record gate.
 
-In the ``build`` and ``feedback`` phases, the main agent cannot finish its turn while the work
+In the ``build`` and ``feedback`` phases, the main agent cannot finish its turn while a lot worktree
+of a parallel wave is left (``.ai/<slug>/lot-<n>/``: integrate and remove it first), while the work
 branch has uncommitted changes, or commits that are not covered by an APPROVED ``review.md``.
 In the ``pr-open`` phase, it cannot finish before the brief and the plan are archived on the draft
 PR (``record_thread`` in ``state.json``).
@@ -34,6 +35,9 @@ def gate(workflow: wg.Workflow) -> Blocked:
         return ("Record gate", reason) if reason else None
     if workflow.phase not in wg.STOP_GATED_PHASES:
         return None
+    lots = workflow.lot_worktrees()
+    if lots:
+        return ("Lot gate", lot_gate(workflow, lots))
     head = wg.head_sha(workflow.root)
     dirty = wg.workflow_dirty_paths(workflow)
     if not head or dirty is None:
@@ -72,6 +76,17 @@ def evaluate(hook: wg.HookInput) -> Blocked:
     if blocked:
         wg.log_event(workflow, "Stop", "", "block", f"{blocked[0]}: {blocked[1]}")
     return blocked
+
+
+def lot_gate(workflow: wg.Workflow, lots: list) -> str:
+    """A parallel wave is over when its lots are integrated into the work branch and their worktrees removed."""
+    names = ", ".join(f".ai/{workflow.slug}/{lot.name}" for lot in lots)
+    return (
+        f"lot worktree(s) {names} are still open. Integrate each lot in plan order (git -C <worktree> rebase "
+        f"{workflow.branch}, then git merge --ff-only {workflow.branch}--lot-<n>), remove its worktree (git worktree "
+        f"remove <worktree>) and delete its branch (git branch -d {workflow.branch}--lot-<n>), or escalate "
+        "(plan-execution skill)."
+    )
 
 
 def record_gate(workflow: wg.Workflow) -> Optional[str]:

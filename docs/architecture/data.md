@@ -1,6 +1,6 @@
 ---
 title: Data
-verified_on: 2026-11-13
+verified_on: 2026-11-25
 sources:
   - skills/delivery-workflow/
   - scripts/hooks/workflow_gate.py
@@ -25,7 +25,9 @@ The plugin has no database. Its state lives in files of the target project.
 | `.ai/<slug>/.hooks.json` | Heartbeat (time, plugin version), `user_prompt_at`, `written_at` and `validated_at` per artifact, `escalated_at`, `untracked_baseline`, `stop_blocks` | no | hooks only | `scripts/hooks/workflow_gate.py`, `state_policy.py`, `user_prompt.py`, `stop.py` |
 | `.ai/<slug>/log.jsonl` | One JSON line per hook decision: `at`, `hook`, `tool`, `decision`, `reason`, `head`, `phase` | no | hooks only (append-only) | `log_event` in `scripts/hooks/workflow_gate.py` |
 | `.ai/<slug>/usage.json` | Token usage per agent (schema below) | no | hooks only (`Stop`, `SubagentStart`, `SubagentStop`) | `scripts/hooks/usage.py` |
-| `.ai/<slug>/.<subagent>-active` | Subagent markers (reviewer, implementer, ui-ux-designer, security-architect, performance-architect) | no | hooks only | `scripts/hooks/subagent.py` |
+| `.ai/<slug>/.<subagent>-active` | Subagent markers (reviewer, implementer, ui-ux-designer, security-architect, performance-architect): one `<start epoch> <run id>` line per running instance, removed with the last one | no | hooks only | `scripts/hooks/subagent.py`, `add_marker_run` and `remove_marker_run` in `scripts/hooks/workflow_gate.py` |
+| `.ai/<slug>/.lock` | Exists for a moment while a hook rewrites `.hooks.json`, `usage.json` or a marker; broken after 30 s | no | hooks only | `locked` in `scripts/hooks/workflow_gate.py` |
+| `.ai/<slug>/lot-<n>/` | Git worktree of lot `n` during a parallel wave, on the local branch `ai/<slug>--lot-<n>`; removed once the lot is integrated, or by the close step | no (inside the excluded `.ai/`) | builder (`git worktree add`), coding subagents inside it | `skills/plan-execution/SKILL.md`, `lot_worktrees` in `scripts/hooks/workflow_gate.py`, `scripts/close_workflow.py` |
 | `.ai/archive/<slug>/` | Closed workflows | no | close step | `scripts/close_workflow.py` |
 | `.vscode/mcp.json` | `ado-read` and `ado-write` declarations | excluded when created by the script and untracked | `onboard.py` | `skills/project-onboarding/scripts/onboard.py` |
 | `docs/architecture/` | Architecture map | yes | architecture-mapping, implementer | `skills/architecture-mapping/SKILL.md` |
@@ -41,7 +43,7 @@ The plugin has no database. Its state lives in files of the target project.
 | `base_branch`, `branch` | target branch, always `ai/<slug>` | `base_branch`: PR target, fixed once the build starts; `branch`: must be `ai/<slug>` (the hooks never trust it) |
 | `work_item` | ID or `null` | no |
 | `brief_validated`, `plan_validated` | `{"at", "head"}` or `null` | yes: required to enter `design` and `build`, need a user prompt after the last write of the file |
-| `lots_done` | append-only list of `{"lot", "commit"}` | yes: append-only within a cycle |
+| `lots_done` | append-only list of `{"lot", "commit"}`, in plan order; a parallel lot is appended once integrated, with its commit on `ai/<slug>` | yes: append-only within a cycle |
 | `pull_request`, `record_thread` | ID or `null`, set once | yes: PR and comment writes are scoped to `pull_request`; `record_thread` ends the record gate |
 | `review_iterations` | 0 to 2 | yes: +1 per reviewer run, reset to 0 when a cycle starts, equal to the `iteration` of `review.md` |
 | `escalation` | `{"from", "reason"}` | yes: required to enter `escalated` |

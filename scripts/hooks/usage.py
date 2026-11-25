@@ -200,25 +200,26 @@ def read_usage(directory: Path) -> Dict[str, Any]:
 
 
 def update_usage(directory: Path, change: Callable[[Dict[str, Any]], None]) -> None:
-    """Read-modify-write ``usage.json`` atomically, like ``.hooks.json``."""
+    """Read-modify-write ``usage.json`` atomically, like ``.hooks.json``, under the hook lock (parallel subagents)."""
     if not directory.is_dir():
         return
-    data = read_usage(directory)
-    data.setdefault("version", USAGE_VERSION)
-    data.setdefault("agents", {})
-    data.setdefault("transcripts", {})
-    change(data)
-    data["updated_at"] = wg.now_iso()
-    handle, temporary = tempfile.mkstemp(prefix=".usage-", dir=str(directory))
-    try:
-        with os.fdopen(handle, "w", encoding="utf-8") as stream:
-            json.dump(data, stream, indent=2, sort_keys=True)
-        os.replace(temporary, directory / USAGE_FILE)
-    except OSError:
+    with wg.locked(directory):
+        data = read_usage(directory)
+        data.setdefault("version", USAGE_VERSION)
+        data.setdefault("agents", {})
+        data.setdefault("transcripts", {})
+        change(data)
+        data["updated_at"] = wg.now_iso()
+        handle, temporary = tempfile.mkstemp(prefix=".usage-", dir=str(directory))
         try:
-            os.unlink(temporary)
+            with os.fdopen(handle, "w", encoding="utf-8") as stream:
+                json.dump(data, stream, indent=2, sort_keys=True)
+            os.replace(temporary, directory / USAGE_FILE)
         except OSError:
-            pass
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
 
 
 def _agent_entry(data: Dict[str, Any], agent: str) -> Dict[str, Any]:

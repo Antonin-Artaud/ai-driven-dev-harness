@@ -11,25 +11,32 @@ Each hook writes exactly one JSON object to stdout. Decisions are written in bot
 Local (``hookSpecificOutput``) and the Copilot (top-level) formats, so the same script
 serves both harnesses.
 
-The hooks own four kinds of files under ``.ai/<slug>/`` that no agent may write: ``.hooks.json``
+The hooks own five kinds of files under ``.ai/<slug>/`` that no agent may write: ``.hooks.json``
 (heartbeat, time of the last user prompt, validation and escalation times), ``log.jsonl``
-(append-only decision log), ``usage.json`` (token usage per agent, ``usage.py``) and the subagent
-markers (``.reviewer-active``, ``.implementer-active``...).
+(append-only decision log), ``usage.json`` (token usage per agent, ``usage.py``), the subagent
+markers (``.reviewer-active``, ``.implementer-active``..., one line per running instance) and
+``.lock``, held for a few milliseconds while a hook rewrites one of them (parallel subagents).
+
+Independent lots can run in parallel, each in a git worktree nested in the workflow folder:
+``.ai/<slug>/lot-<n>/`` on the local branch ``ai/<slug>--lot-<n>`` (plan-execution skill, ADR 0010).
+The workflow of a path inside such a worktree is the one of the checkout that holds its ``.ai/``.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import posixpath
 import re
 import subprocess
 import sys
 import tempfile
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Iterator, List, NamedTuple, Optional, Tuple
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 AI_MARKER = "\U0001f916"
@@ -64,8 +71,19 @@ REVIEWER_MARKER_MAX_AGE = MARKER_MAX_AGE
 HOOK_STATE = ".hooks.json"
 LOG_FILE = "log.jsonl"
 USAGE_FILE = "usage.json"
+LOCK_FILE = ".lock"
+# Hooks of parallel subagents rewrite the same files: wait at most LOCK_TIMEOUT for the lock, then go
+# on without it (a hook never hangs); a lock older than LOCK_STALE was left by a killed hook.
+LOCK_TIMEOUT = 3.0
+LOCK_STALE = 30.0
 HEARTBEAT_INTERVAL = 60.0
 GIT_TIMEOUT = 4.0
+# Lot worktrees of a parallel wave (plan-execution skill): .ai/<slug>/lot-<n>/, branch ai/<slug>--lot-<n>.
+LOT_DIR_RE = re.compile(r"^lot-([1-9][0-9]{0,2})$", re.IGNORECASE)
+_LOT_PATH_RE = re.compile(
+    r"^(?P<root>.*?)/\.ai/(?P<slug>[a-z0-9]+(?:-[a-z0-9]+)*)/lot-(?P<lot>[1-9][0-9]{0,2})(?:/(?P<rest>.*))?$",
+    re.IGNORECASE,
+)
 
 # Slug rule (delivery-workflow skill): kebab-case, at most 40 characters.
 SLUG_RE = re.compile(r"^(?=.{1,40}$)[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -73,7 +91,7 @@ _SLUG_RE = SLUG_RE
 RESERVED_SLUGS = frozenset({ARCHIVE_DIR})
 _NAME_RE = {name: re.compile(r"(?:^|[^a-z0-9])" + re.escape(name) + r"$") for name in SUBAGENTS}
 # Files under .ai/<any>/ that only the hooks write.
-HOOK_OWNED_FILES = frozenset({*(f".{name}-active" for name in SUBAGENTS), HOOK_STATE, LOG_FILE, USAGE_FILE})
+HOOK_OWNED_FILES = frozenset({*(f".{name}-active" for name in SUBAGENTS), HOOK_STATE, LOG_FILE, USAGE_FILE, LOCK_FILE})
 # review.md, state.json and the hook-owned files of any slug: never written from the shell.
 PROTECTED_PATH_RE = re.compile(
     r"(?:^|[^a-z0-9._-])\.ai/(?:current(?![a-z0-9._-])|[a-z0-9][a-z0-9._-]*/(?:review\.md|state\.json|security\.md|performance\.md|"
@@ -185,6 +203,45 @@ class Workflow:
     def hook_state(self) -> Dict[str, Any]:
         return read_hook_state(self.directory)
 
+    def lot_worktree(self, lot: int) -> Path:
+        """Folder of the git worktree of ``lot`` during a parallel wave."""
+        return self.directory / f"lot-{lot}"
+
+    def lot_branch(self, lot: int) -> str:
+        """Local branch of a lot worktree; ``--`` cannot appear in a slug, so it never names another workflow."""
+        return f"{self.branch}--lot-{lot}"
+
+    def lot_worktrees(self) -> List[Path]:
+        """The ``lot-<n>`` folders of the workflow, in lot order: lot worktrees not removed yet."""
+        try:
+            entries = [entry for entry in self.directory.iterdir() if entry.is_dir() and LOT_DIR_RE.match(entry.name)]
+        except OSError:
+            return []
+        return sorted(entries, key=lambda entry: int(LOT_DIR_RE.match(entry.name).group(1)))  # type: ignore[union-attr]
+
+
+class LotPath(NamedTuple):
+    """A path inside a lot worktree: the checkout holding ``.ai/``, the slug, the lot and the rest of the path."""
+
+    root: str
+    slug: str
+    lot: int
+    rest: str
+
+
+def normalize_path(path: str) -> str:
+    """Forward slashes and no ``.`` or ``..`` segment: ``.ai/x/lot-2/../state.json`` is ``.ai/x/state.json``."""
+    text = path.replace("\\", "/")
+    return posixpath.normpath(text) if text else text
+
+
+def lot_location(path: str) -> Optional[LotPath]:
+    """Where ``path`` sits when it is inside a lot worktree ``<root>/.ai/<slug>/lot-<n>/``, else None."""
+    match = _LOT_PATH_RE.match(normalize_path(path))
+    if not match:
+        return None
+    return LotPath(match.group("root"), match.group("slug").lower(), int(match.group("lot")), match.group("rest") or "")
+
 
 def marker_active(path: Path) -> bool:
     try:
@@ -192,6 +249,68 @@ def marker_active(path: Path) -> bool:
     except OSError:
         return False
     return -CLOCK_SKEW <= age <= MARKER_MAX_AGE
+
+
+def marker_runs(path: Path) -> List[Tuple[float, str]]:
+    """Running instances recorded in a subagent marker: one ``<start epoch> <run id>`` line each.
+
+    A marker without a readable line (older plugin versions wrote the epoch alone, tests write ``1``)
+    counts as one run started at the file time.
+    """
+    try:
+        text = read_text(path)
+    except OSError:
+        return []
+    runs: List[Tuple[float, str]] = []
+    for line in text.splitlines():
+        words = line.split()
+        if not words:
+            continue
+        try:
+            runs.append((float(words[0]), words[1] if len(words) > 1 else ""))
+        except ValueError:
+            continue
+    if not runs:
+        try:
+            runs.append((path.stat().st_mtime, ""))
+        except OSError:
+            return []
+    return runs
+
+
+def _write_runs(path: Path, runs: List[Tuple[float, str]]) -> None:
+    if runs:
+        path.write_text("".join(f"{started:.3f} {run or '-'}\n" for started, run in runs), encoding="utf-8")
+    else:
+        path.unlink(missing_ok=True)
+
+
+def add_marker_run(path: Path, run: str, started: float) -> None:
+    """SubagentStart: one more running instance (parallel lots run several implementers at once)."""
+    with locked(path.parent):
+        runs = marker_runs(path) if path.exists() else []
+        runs.append((started, run.strip() or "-"))
+        _write_runs(path, runs)
+
+
+def remove_marker_run(path: Path, run: str) -> Optional[float]:
+    """SubagentStop: remove the instance ``run`` (else the oldest one) and return its start time.
+
+    The marker disappears with its last running instance, so a parallel implementer still running
+    keeps its identity after the first one stops.
+    """
+    with locked(path.parent):
+        if not path.exists():
+            return None
+        runs = marker_runs(path)
+        if not runs:
+            path.unlink(missing_ok=True)
+            return None
+        wanted = run.strip()
+        index = next((position for position, (_, name) in enumerate(runs) if wanted and name == wanted), 0)
+        started, _ = runs.pop(index)
+        _write_runs(path, runs)
+        return started
 
 
 def read_input() -> HookInput:
@@ -244,12 +363,25 @@ def is_reviewer_name(name: str) -> bool:
     return is_agent_name(name, REVIEWER_AGENT)
 
 
+_CURRENT_SEGMENT_RE = re.compile(r"/(?:\./)+")
+_PARENT_SEGMENT_RE = re.compile(r"(?<![^/\s'\"`=])(?!\.\./)[^/\s'\"`]+/\.\./")
+
+
+def _paths_text(text: str) -> str:
+    """Forward slashes, lower case, ``.`` and ``dir/..`` segments collapsed, in free text (a command line)."""
+    text = _CURRENT_SEGMENT_RE.sub("/", text.replace("\\", "/").lower())
+    previous = None
+    while previous != text:
+        previous, text = text, _PARENT_SEGMENT_RE.sub("", text, count=1)
+    return text
+
+
 def mentions_protected_path(text: str) -> bool:
-    return bool(PROTECTED_PATH_RE.search(text.replace("\\", "/").lower()))
+    return bool(PROTECTED_PATH_RE.search(_paths_text(text)))
 
 
 def mentions_review_path(text: str) -> bool:
-    return bool(REVIEW_PATH_RE.search(text.replace("\\", "/").lower()))
+    return bool(REVIEW_PATH_RE.search(_paths_text(text)))
 
 
 def _first(payload: Dict[str, Any], *keys: str) -> Any:
@@ -290,6 +422,43 @@ def find_repo_root(cwd: Any) -> Optional[Path]:
     return None
 
 
+def find_workflow_root(cwd: Any) -> Optional[Path]:
+    """The checkout that holds ``.ai/`` for ``cwd``, without running git.
+
+    Inside a lot worktree (``<root>/.ai/<slug>/lot-<n>/``) it is ``<root>``, the checkout the worktree is
+    nested in, so the gates keep applying there. Other linked worktrees of the repository keep their own
+    root: a worktree the user made elsewhere has no ``.ai/`` and no active workflow.
+    """
+    try:
+        start = Path(str(cwd)).resolve()
+    except (OSError, RuntimeError):
+        return None
+    lot = lot_location(start.as_posix())
+    if lot is not None:
+        root = Path(lot.root or "/")
+        if (root / ".git").exists() and (root / WORKFLOW_DIR / lot.slug).is_dir():
+            return root
+    return find_repo_root(start)
+
+
+def same_path(first: Any, second: Any) -> bool:
+    """Same file system location, symbolic links and case (Windows) included."""
+    try:
+        return os.path.normcase(os.path.realpath(str(first))) == os.path.normcase(os.path.realpath(str(second)))
+    except (OSError, ValueError):
+        return False
+
+
+def is_inside(path: Any, folder: Any) -> bool:
+    """``path`` is ``folder`` or below it (symbolic links and case resolved; ``..`` collapsed)."""
+    try:
+        target = os.path.normcase(os.path.realpath(str(path)))
+        base = os.path.normcase(os.path.realpath(str(folder)))
+    except (OSError, ValueError):
+        return False
+    return target == base or target.startswith(base.rstrip(os.sep) + os.sep)
+
+
 def read_current_slug(root: Path) -> Optional[str]:
     try:
         slug = read_text(root / WORKFLOW_DIR / "current").strip().lstrip("﻿")
@@ -314,8 +483,8 @@ def workflow_for(root: Path, slug: str) -> Workflow:
 
 
 def load_workflow(cwd: Any, include_inactive: bool = False) -> Optional[Workflow]:
-    """Return the active workflow of the repository containing ``cwd``, if any."""
-    root = find_repo_root(cwd)
+    """Return the active workflow of the repository containing ``cwd`` (a lot worktree included), if any."""
+    root = find_workflow_root(cwd)
     if root is None:
         return None
     slug = read_current_slug(root)
@@ -385,22 +554,62 @@ def read_hook_state(directory: Path) -> Dict[str, Any]:
     return read_json(directory / HOOK_STATE)
 
 
+@contextmanager
+def locked(directory: Path) -> Iterator[bool]:
+    """Serialize the read-modify-write of hook-owned files between hooks running at the same time.
+
+    Parallel subagents fire their hooks concurrently: without the lock, two ``SubagentStart`` events
+    lose one marker line, two ``SubagentStop`` events one usage update. Best effort: yields False when
+    the lock was not taken within ``LOCK_TIMEOUT`` (the hook goes on: it must never hang), and breaks a
+    lock older than ``LOCK_STALE``.
+    """
+    path = directory / LOCK_FILE
+    deadline = time.time() + LOCK_TIMEOUT
+    acquired = False
+    while True:
+        try:
+            os.close(os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            acquired = True
+            break
+        except (FileExistsError, PermissionError):
+            try:
+                if time.time() - path.stat().st_mtime > LOCK_STALE:
+                    path.unlink(missing_ok=True)
+                    continue
+            except OSError:
+                pass
+        except OSError:
+            break  # no workflow folder, read-only file system: nothing to protect
+        if time.time() >= deadline:
+            break
+        time.sleep(0.01)
+    try:
+        yield acquired
+    finally:
+        if acquired:
+            try:
+                path.unlink()
+            except OSError:
+                pass
+
+
 def update_hook_state(directory: Path, change: Callable[[Dict[str, Any]], None]) -> None:
-    """Read-modify-write ``.hooks.json`` atomically (temporary file, then replace)."""
+    """Read-modify-write ``.hooks.json`` atomically (temporary file, then replace) under the hook lock."""
     if not directory.is_dir():
         return
-    data = read_hook_state(directory)
-    change(data)
-    handle, temporary = tempfile.mkstemp(prefix=".hooks-", dir=str(directory))
-    try:
-        with os.fdopen(handle, "w", encoding="utf-8") as stream:
-            json.dump(data, stream, indent=2, sort_keys=True)
-        os.replace(temporary, directory / HOOK_STATE)
-    except OSError:
+    with locked(directory):
+        data = read_hook_state(directory)
+        change(data)
+        handle, temporary = tempfile.mkstemp(prefix=".hooks-", dir=str(directory))
         try:
-            os.unlink(temporary)
+            with os.fdopen(handle, "w", encoding="utf-8") as stream:
+                json.dump(data, stream, indent=2, sort_keys=True)
+            os.replace(temporary, directory / HOOK_STATE)
         except OSError:
-            pass
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
 
 
 def now_iso(epoch: Optional[float] = None) -> str:

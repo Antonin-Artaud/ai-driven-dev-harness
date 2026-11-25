@@ -16,6 +16,7 @@
 - Base branch: `main`
 - Hosting: GitHub, `Antonin-Artaud/ai-driven-dev-harness` (the workflow's Azure Repos draft PR step does not apply to this repository yet)
 - Work branches: `ai/<slug>`
+- Parallel lots: up to 3 (the tests build their git repositories in temporary folders, nothing is shared; nothing to install in a fresh worktree)
 
 ### Architecture docs
 - Architecture docs: `docs/architecture` (kept up to date by every workflow PR; see the architecture-mapping skill)

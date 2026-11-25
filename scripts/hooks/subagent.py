@@ -4,8 +4,10 @@
 While a workflow subagent (reviewer, implementer, ui-ux-designer, security-architect,
 performance-architect) runs, ``.ai/<slug>/.<name>-active`` exists. The PreToolUse hook uses these
 markers when the harness does not send the agent type with each tool call: the reviewer marker
-lets ``review.md`` through, the other markers identify who writes files. The event comes from the first
-argument (``start`` or ``stop``) because the Copilot camelCase payloads do not name it.
+lets ``review.md`` through, the other markers identify who writes files. The marker holds one line
+per running instance (parallel lots run several implementers at once) and disappears with the last
+one. The event comes from the first argument (``start`` or ``stop``) because the Copilot camelCase
+payloads do not name it.
 
 Both events also feed ``usage.json`` (``usage.py``): at start, the new requests of the transcript
 belong to the main agent; at stop, to the subagent, whose run time comes from its marker.
@@ -35,27 +37,18 @@ def evaluate(event: str, hook: wg.HookInput) -> None:
     if workflow is None:
         return
     marker = marker_for(workflow, hook.agent)
-    started_at = marker_time(marker) if marker is not None and event == "stop" else None
+    started_at: Optional[float] = None
     if marker is not None:
         if event == "start":
-            marker.write_text(f"{time.time():.0f}\n", encoding="utf-8")
+            wg.add_marker_run(marker, hook.agent_id, time.time())
         elif event == "stop":
-            marker.unlink(missing_ok=True)
+            started_at = wg.remove_marker_run(marker, hook.agent_id)
         wg.log_event(workflow, f"Subagent{event.capitalize()}", hook.agent, "observed", "")
     if event in ("start", "stop"):
         try:
             usage.record(workflow, event, hook.transcript, hook.agent, started_at)
         except Exception as exc:  # noqa: BLE001 - usage is informative, never a reason to fail the hook
             wg.log_event(workflow, f"Subagent{event.capitalize()}", hook.agent, "error", f"usage: {exc!r}")
-
-
-def marker_time(marker: Path) -> Optional[float]:
-    """Start time written by SubagentStart in the marker, else the marker's file time."""
-    try:
-        text = marker.read_text(encoding="utf-8").strip()
-        return float(text) if text else marker.stat().st_mtime
-    except (OSError, ValueError):
-        return None
 
 
 def main() -> int:

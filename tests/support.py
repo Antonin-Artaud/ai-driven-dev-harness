@@ -26,6 +26,10 @@ SLUG = "1234-demo"
 BRANCH = f"ai/{SLUG}"
 
 
+def lot_branch(lot: int) -> str:
+    return f"{BRANCH}--lot-{lot}"
+
+
 def load_module(name: str, path: Path) -> ModuleType:
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
@@ -149,6 +153,12 @@ class TempGitRepo:
         if exclude and (not exclude_file.exists() or ".ai/" not in exclude_file.read_text(encoding="utf-8")):
             self.exclude(".ai/")
         return directory
+
+    def add_lot(self, lot: int, start: str = BRANCH) -> Path:
+        """A lot worktree as the builder creates it: .ai/<slug>/lot-<n> on branch ai/<slug>--lot-<n>."""
+        path = self.path / ".ai" / SLUG / f"lot-{lot}"
+        self.git("worktree", "add", "-q", "-b", lot_branch(lot), str(path), start)
+        return path
 
     def hook_state(self) -> Dict[str, Any]:
         path = self.path / ".ai" / SLUG / ".hooks.json"

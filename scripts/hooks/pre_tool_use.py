@@ -8,7 +8,9 @@ Acts only in a git repository with an active workflow (``.ai/current`` present a
 * shell commands: ``git push`` asks and only targets ``ai/<slug>``; force pushes, deletions, az
   writes and HTTP calls to Azure DevOps are denied; commands the hook cannot resolve ask; in the
   build and feedback phases, a commit that changes code without any test file asks the user
-  (red-green-refactor skill);
+  (red-green-refactor skill). Git commands are checked in the checkout they run in (``cd``,
+  ``git -C``), a lot worktree included; the coding subagents never push, and do not commit in the
+  main checkout while lot worktrees are open; ``git worktree add`` outside the lot convention asks;
 * Azure DevOps MCP tools: known read tools pass, PR and comment writes are checked and scoped to
   the workflow's PR, every other tool is denied.
 
@@ -255,6 +257,12 @@ AZ_WRITE_VERBS = frozenset(
     }
 )
 CLOSE_SCRIPT = "close_workflow.py"
+# Commands that change the shell's directory for the rest of the command line.
+CD_COMMANDS = frozenset({"cd", "chdir", "pushd", "set-location", "sl", "push-location"})
+CD_OPTIONS_WITH_VALUE = frozenset({"-path", "-literalpath", "-stackname"})
+# git global options that move the repository without -C: the checkout is then unknown.
+GIT_LOCATION_OPTIONS = ("--git-dir", "--work-tree")
+WORKTREE_ADD_OPTIONS_WITH_VALUE = frozenset({"--reason"})
 # git commit: test-first gate (red-green-refactor skill).
 COMMIT_GATED_PHASES = wg.STOP_GATED_PHASES
 COMMIT_OPTIONS_WITH_VALUE = frozenset(
@@ -500,14 +508,20 @@ def is_unresolved(text: str) -> bool:
 
 
 class ShellContext:
-    """State shared by the segments of one command line: variables assigned before use."""
+    """State shared by the segments of one command line: variables assigned before use, current folder."""
 
-    def __init__(self, workflow: wg.Workflow, stages: bool = False) -> None:
+    def __init__(
+        self, workflow: wg.Workflow, stages: bool = False, cwd: Optional[Path] = None, who: str = "main"
+    ) -> None:
         self.workflow = workflow
         self.variables: Dict[str, str] = {}
         self.git_aliases: Dict[str, str] = {}
         # The command line also stages files, so a commit is checked against the working tree.
         self.stages = stages
+        # Folder the next command runs in (the hook's folder, then each `cd`); None once it is unknown.
+        self.cwd: Optional[Path] = cwd if cwd is not None else workflow.root
+        # Who runs the command (state_policy.identity): the coding subagents never push.
+        self.who = who
 
 
 def evaluate_opaque(text: str, what: str) -> Decision:
@@ -555,6 +569,65 @@ def skip_wrappers(tokens: List[Token], context: ShellContext, depth: int) -> Tup
             index += 1
         index += positionals
     return index, extra
+
+
+def change_directory(args: List[str], context: ShellContext) -> None:
+    """``cd <dir>``, ``pushd <dir>``, ``Set-Location -Path <dir>``: later commands run in ``<dir>``.
+
+    A folder the hook cannot know (variable, ``cd -``, no argument) makes the location unknown.
+    """
+    words: List[str] = []
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        lowered = arg.lower()
+        if lowered in CD_OPTIONS_WITH_VALUE:
+            if index + 1 < len(args):
+                words.append(args[index + 1])
+            index += 2
+            continue
+        if (arg.startswith("-") and arg != "-") or lowered == "/d":  # cd -P, cd /d C:\x (cmd)
+            index += 1
+            continue
+        words.append(arg)
+        index += 1
+    if not words or words[0] == "-" or is_unresolved(words[0]):
+        context.cwd = None
+        return
+    target = Path(words[0]).expanduser()
+    if not target.is_absolute():
+        context.cwd = None if context.cwd is None else context.cwd / target
+    else:
+        context.cwd = target
+
+
+def git_location(args: List[str], cwd: Optional[Path]) -> Optional[Path]:
+    """Folder a git command runs in: ``cwd`` moved by each ``-C <dir>``; None when the hook cannot tell."""
+    location = cwd
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg == "-C" and index + 1 < len(args):
+            value = args[index + 1]
+            if is_unresolved(value):
+                return None
+            target = Path(value).expanduser()
+            location = target if target.is_absolute() else (None if location is None else location / target)
+            index += 2
+        elif arg.startswith(GIT_LOCATION_OPTIONS):
+            return None
+        elif arg in GIT_OPTIONS_WITH_VALUE:
+            index += 2
+        elif arg.startswith("-"):
+            index += 1
+        else:
+            break
+    return location
+
+
+def checkout_of(location: Optional[Path]) -> Optional[Path]:
+    """The checkout (main or linked worktree) a git command acts on, or None when unknown."""
+    return None if location is None else wg.find_repo_root(location)
 
 
 def git_subcommand(args: List[str]) -> Tuple[Optional[str], List[str], Dict[str, str]]:
@@ -617,19 +690,24 @@ def push_positionals(args: List[str]) -> List[str]:
     return positionals
 
 
-def push_destination_problem(args: List[str], workflow: wg.Workflow) -> Tuple[Optional[str], bool]:
-    """(denial reason, unresolved) for the destinations of a push without forbidden options."""
+def push_destination_problem(
+    args: List[str], workflow: wg.Workflow, checkout: Optional[Path]
+) -> Tuple[Optional[str], bool]:
+    """(denial reason, unresolved) for the destinations of a push without forbidden options.
+
+    ``checkout`` is where the push runs (a lot worktree has its own current branch), None when unknown.
+    """
     branch = workflow.branch
     positionals = push_positionals(args)
     unresolved = any(is_unresolved(arg) for arg in args)
     refspecs = positionals[1:]
     if not refspecs:
-        current = wg.current_branch(workflow.root)
+        current = wg.current_branch(checkout) if checkout is not None else None
         if current is None:
             return None, True
         if current != branch:
             return f"the current branch is '{current}'; the workflow only pushes '{branch}'.", False
-        merge = wg.git(workflow.root, "config", "--get", f"branch.{current}.merge")
+        merge = wg.git(checkout, "config", "--get", f"branch.{current}.merge")
         if merge and normalize_ref(merge) != branch:
             return f"'{current}' tracks '{merge}'; the workflow only pushes to '{branch}'.", False
         return None, unresolved
@@ -642,7 +720,10 @@ def push_destination_problem(args: List[str], workflow: wg.Workflow) -> Tuple[Op
             return f"refspec '{refspec}' has no destination.", False
         target = destination if colon else source
         if not colon and source == "HEAD":
-            target = wg.current_branch(workflow.root) or "HEAD"
+            if checkout is None:
+                unresolved = True
+                continue
+            target = wg.current_branch(checkout) or "HEAD"
         if target.startswith("refs/") and not target.startswith("refs/heads/"):
             return f"'{refspec}' pushes '{target}'; the workflow only pushes the branch '{branch}'.", False
         if normalize_ref(target) != branch:
@@ -650,14 +731,22 @@ def push_destination_problem(args: List[str], workflow: wg.Workflow) -> Tuple[Op
     return None, unresolved
 
 
-def evaluate_push(args: List[str], workflow: wg.Workflow, resolved: bool = True) -> Decision:
+def evaluate_push(
+    args: List[str], workflow: wg.Workflow, resolved: bool = True, checkout: Optional[Path] = None, who: str = "main"
+) -> Decision:
     violation = push_violation(args)
     if violation:
         return deny(
             f"'{violation}' is not allowed: no force push, branch deletion or mirror push in the "
             "delivery workflow. Ask the user to do it manually if it is really needed."
         )
-    problem, unresolved = push_destination_problem(args, workflow)
+    if who in wg.CODING_AGENTS:
+        return deny(
+            f"the {who} never pushes (plan-execution skill): it commits its lot and reports to the builder, "
+            f"which pushes {workflow.branch} once the review approves it. If no {who} runs, its marker is "
+            "stale: the Stop hook clears it at the end of the turn."
+        )
+    problem, unresolved = push_destination_problem(args, workflow, checkout)
     if problem:
         return deny(f"push destination: {problem}")
     shown = " ".join(["git push", *args])
@@ -709,12 +798,18 @@ def parse_commit_args(args: List[str]) -> Tuple[bool, bool, List[str]]:
     return commit_all, amend, pathspecs
 
 
-def commit_paths(args: List[str], workflow: wg.Workflow, stages: bool) -> Optional[List[str]]:
-    """Paths the commit will contain (a superset when files are staged by the same command), or None."""
-    root = workflow.root
+def commit_paths(args: List[str], workflow: wg.Workflow, stages: bool, checkout: Path) -> Optional[List[str]]:
+    """Paths the commit will contain (a superset when files are staged by the same command), or None.
+
+    ``checkout`` is where the commit runs: the main checkout, or a lot worktree (no untracked baseline).
+    """
+    root = checkout
     commit_all, amend, pathspecs = parse_commit_args(args)
     if stages or commit_all or pathspecs:
-        found = wg.workflow_dirty_paths(workflow)
+        if wg.same_path(checkout, workflow.root):
+            found = wg.workflow_dirty_paths(workflow)
+        else:
+            found = wg.dirty_paths(checkout)
     else:
         staged = wg.git(root, "diff", "--cached", "--name-only")
         found = None if staged is None else staged.splitlines()
@@ -727,11 +822,30 @@ def commit_paths(args: List[str], workflow: wg.Workflow, stages: bool) -> Option
     return sorted(path for path in paths if path)
 
 
-def evaluate_commit(args: List[str], workflow: wg.Workflow, stages: bool) -> Decision:
-    """Test-first gate: a build or feedback commit that changes code without any test file asks the user."""
+def evaluate_commit(
+    args: List[str], workflow: wg.Workflow, stages: bool, checkout: Optional[Path] = None, who: str = "main"
+) -> Decision:
+    """Test-first gate: a build or feedback commit that changes code without any test file asks the user.
+
+    The commit is checked in the checkout it runs in. While lot worktrees are open, a coding subagent
+    commits only in its lot worktree: a commit that lands in the main checkout (the terminal may still
+    be there) is denied, so the agent names its worktree (``git -C <worktree> commit``).
+    """
     if workflow.phase not in COMMIT_GATED_PHASES:
         return NO_DECISION
-    paths = commit_paths(args, workflow, stages)
+    if checkout is None:
+        return (
+            "ask",
+            "This git commit runs in a folder the hooks cannot resolve (variable, `cd -`, --git-dir or "
+            "--work-tree), so the test-first gate cannot check its files. Name the folder "
+            "(git -C <checkout> commit ...) or allow it?",
+        )
+    if who in wg.CODING_AGENTS and wg.same_path(checkout, workflow.root) and workflow.lot_worktrees():
+        return deny(
+            f"lot worktrees are open: the {who} commits in the worktree of its lot, not in the main checkout. "
+            f"Name it on each git command: git -C .ai/{workflow.slug}/lot-<n> commit ... (plan-execution skill)."
+        )
+    paths = commit_paths(args, workflow, stages, checkout)
     if not paths or any(is_test_path(path) for path in paths):
         return NO_DECISION
     code = [path for path in paths if is_code_path(path)]
@@ -754,13 +868,16 @@ def evaluate_git(
     inline_aliases = {**context.git_aliases, **(inherited or {}), **inline_aliases}
     if subcommand is None:
         return NO_DECISION
+    location = git_location(args, context.cwd)
     if is_unresolved(subcommand):
-        return evaluate_unresolved([subcommand, *sub_args], context)
+        return evaluate_unresolved([subcommand, *sub_args], context, location)
     if subcommand == "config":
         record_git_alias(sub_args, context)
         return NO_DECISION
     if subcommand == "commit":
-        return evaluate_commit(sub_args, workflow, context.stages)
+        return evaluate_commit(sub_args, workflow, context.stages, checkout_of(location), context.who)
+    if subcommand == "worktree":
+        return evaluate_worktree(sub_args, workflow, location)
     if subcommand != "push":
         alias = git_alias(subcommand, inline_aliases, workflow)
         if not alias:
@@ -771,8 +888,69 @@ def evaluate_git(
         if alias.startswith("!"):
             return evaluate_command(f"{alias[1:]} {rest}", context, depth + 1)
         expanded = [token.text for segment in lex(alias) for token in segment]
-        return evaluate_git(expanded + sub_args, context, depth + 1, inline_aliases)
-    return evaluate_push(sub_args, workflow)
+        options = args[: len(args) - len(sub_args) - 1]  # -C <dir> and the other global options stay
+        return evaluate_git(options + expanded + sub_args, context, depth + 1, inline_aliases)
+    return evaluate_push(sub_args, workflow, checkout=checkout_of(location), who=context.who)
+
+
+def evaluate_worktree(args: List[str], workflow: wg.Workflow, location: Optional[Path]) -> Decision:
+    """``git worktree add`` follows the lot convention, where the hooks find the workflow and gate the lot.
+
+    Allowed: ``git worktree add -b ai/<slug>--lot-<n> .ai/<slug>/lot-<n> [<start>]``, or the existing lot
+    branch as ``<commit-ish>`` (resume). Anything else asks the user.
+    """
+    if not args or args[0].lower() != "add":
+        return NO_DECISION
+    branch: Optional[str] = None
+    detached = reset = False
+    positionals: List[str] = []
+    index = 1
+    while index < len(args):
+        arg = args[index]
+        if arg in ("-b", "-B"):
+            branch = args[index + 1] if index + 1 < len(args) else ""
+            reset = reset or arg == "-B"
+            index += 2
+            continue
+        if arg in WORKTREE_ADD_OPTIONS_WITH_VALUE:
+            index += 2
+            continue
+        if arg in ("-d", "--detach"):
+            detached = True
+        elif not arg.startswith("-"):
+            positionals.append(arg)
+        index += 1
+    if not positionals:
+        return NO_DECISION
+    expected = expected_lot(positionals[0], workflow, location)
+    if expected is not None and not detached and not reset:
+        lot_branch = workflow.lot_branch(expected)
+        start = positionals[1] if len(positionals) > 1 else None
+        if branch == lot_branch or (branch is None and start == lot_branch):
+            return NO_DECISION
+    return (
+        "ask",
+        f"`git worktree add {' '.join(args[1:])}` does not follow the lot convention: a lot worktree is "
+        f".ai/{workflow.slug}/lot-<n> on its own branch {workflow.branch}--lot-<n> (git worktree add -b "
+        f"{workflow.branch}--lot-<n> .ai/{workflow.slug}/lot-<n> {workflow.branch}), where the hooks find the "
+        "workflow and the Stop gate checks it is integrated (plan-execution skill). Allow it?",
+    )
+
+
+def expected_lot(path: str, workflow: wg.Workflow, location: Optional[Path]) -> Optional[int]:
+    """The lot number when ``path`` (relative to ``location``) is ``.ai/<slug>/lot-<n>`` of the workflow."""
+    if is_unresolved(path):
+        return None
+    target = Path(path).expanduser()
+    if not target.is_absolute():
+        if location is None:
+            return None
+        target = location / target
+    match = wg.LOT_DIR_RE.match(target.name)
+    if not match:
+        return None
+    lot = int(match.group(1))
+    return lot if wg.same_path(target, workflow.lot_worktree(lot)) else None
 
 
 def record_git_alias(args: List[str], context: ShellContext) -> None:
@@ -782,11 +960,17 @@ def record_git_alias(args: List[str], context: ShellContext) -> None:
         context.git_aliases[positionals[0][len("alias.") :].lower()] = " ".join(positionals[1:])
 
 
-def evaluate_unresolved(words: List[str], context: ShellContext) -> Decision:
+def evaluate_unresolved(words: List[str], context: ShellContext, location: Optional[Path] = None) -> Decision:
     """A command whose name is only known at run time: a ``push`` among its words is treated as a git push."""
     lowered = [word.lower() for word in words]
     if "push" in lowered:
-        return evaluate_push(words[lowered.index("push") + 1 :], context.workflow, resolved=False)
+        return evaluate_push(
+            words[lowered.index("push") + 1 :],
+            context.workflow,
+            resolved=False,
+            checkout=checkout_of(location if location is not None else context.cwd),
+            who=context.who,
+        )
     if lowered and lowered[0] in AZ_DEVOPS_GROUPS | {"rest"}:
         return ("ask", f"`{' '.join(words)}` looks like an az command the hooks cannot resolve. Allow it?")
     return NO_DECISION
@@ -940,18 +1124,25 @@ def evaluate_segment(tokens: List[Token], context: ShellContext, depth: int) -> 
     args = texts[start + 1 :]
     if any(text.lower().endswith(CLOSE_SCRIPT) for text in texts[start : start + 3]):
         workflow = context.workflow
+        lots = workflow.lot_worktrees()
+        removal = f", remove its {len(lots)} lot worktree(s) left" if lots else ""
         return most_restrictive(
             decision,
             (
                 "ask",
-                f"Close workflow '{workflow.slug}' (phase '{workflow.phase}'): archive .ai/{workflow.slug}, "
-                "clear .ai/current and set phase done?",
+                f"Close workflow '{workflow.slug}' (phase '{workflow.phase}'): archive .ai/{workflow.slug}"
+                f"{removal}, clear .ai/current and set phase done?",
             ),
         )
+    if name in CD_COMMANDS:
+        change_directory(args, context)
+        return decision
     if name == "git":
         result = evaluate_git(args, context, depth)
-    elif name == "push":
-        result = evaluate_push(args, context.workflow, resolved=False)  # the rest of `$(echo git) push ...`
+    elif name == "push":  # the rest of `$(echo git) push ...`
+        result = evaluate_push(
+            args, context.workflow, resolved=False, checkout=checkout_of(context.cwd), who=context.who
+        )
     elif name == "az":
         result = evaluate_az(args)
     elif name in HTTP_CLIENTS and any(ADO_HOST_RE.search(arg) for arg in args):
@@ -982,7 +1173,13 @@ def evaluate_command(command: str, context: Any, depth: int = 0) -> Decision:
 
 
 def evaluate_shell(command: str, hook: wg.HookInput, workflow: wg.Workflow) -> Decision:
-    decision = evaluate_command(command, ShellContext(workflow, stages=bool(GIT_STAGE_RE.search(command))))
+    context = ShellContext(
+        workflow,
+        stages=bool(GIT_STAGE_RE.search(command)),
+        cwd=Path(hook.cwd),
+        who=sp.identity(hook, workflow),
+    )
+    decision = evaluate_command(command, context)
     if wg.mentions_protected_path(command) and SHELL_WRITE_RE.search(command):
         decision = most_restrictive(
             decision,

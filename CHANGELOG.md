@@ -2,6 +2,27 @@
 
 All notable changes of the `ai-driven-dev-harness` plugin. Versions follow [semantic versioning](https://semver.org/); the version lives in `plugin.json`.
 
+## Unreleased — parallel lots in git worktrees
+
+Design: [ADR 0010](docs/architecture/decisions/0010-parallel-lots-in-git-worktrees.md).
+
+### Added
+- Independent lots run in parallel, opt-in per project: `Parallel lots: up to <n>` (2 to 4) in the "AI delivery workflow" section of `AGENTS.md`; missing or `off` keeps one lot at a time. The onboarding template and procedure ask the question (fresh checkout after the install command, no shared database, port or file between two test runs).
+- Plan: each lot has a `Depends on` line (`none` or lot numbers); lots that change a common file are chained (`solution-design` skill, plan template).
+- Builder (`plan-execution` skill): waves of independent lots, one git worktree per lot in `.ai/<slug>/lot-<n>/` on the local branch `ai/<slug>--lot-<n>`, parallel implementer runs, integration in plan order by `git rebase` then `git merge --ff-only`, conflicts resolved in the lot worktree, tests on the integrated branch, then the review as before; resume picks up leftover lot worktrees. Implementer: lot worktree rules (absolute paths, `git -C`, install first, never the main checkout). Reviewer: checks how lots built in parallel fit together.
+- Hooks:
+  - the workflow is found from inside a lot worktree (`find_workflow_root`); worktrees elsewhere keep no workflow;
+  - git pushes and commits are checked in the checkout they run in (`cd`, `pushd`, `Set-Location`, `git -C`); a commit in a folder the hook cannot resolve asks in `build` and `feedback`;
+  - the implementer and the ui-ux-designer never push, and while a lot worktree exists they neither write nor commit in the main checkout; lot worktrees are code paths for them (not their `.git` link or an `.ai/` inside);
+  - `git worktree add` outside the lot convention asks the user;
+  - lot gate: the Stop hook keeps the main agent in a `build` or `feedback` turn while a lot worktree is left;
+  - subagent markers hold one line per running instance, and `.hooks.json`, `usage.json` and the markers are rewritten under a short lock (`.ai/<slug>/.lock`, hook-owned).
+- Close step: removes clean lot worktrees and the lot branches the work branch contains, keeps and reports the others, and stops before any change when a lot worktree holds uncommitted work.
+- `tests/test_worktrees.py`.
+
+### Fixed
+- A `.` or `..` segment in a path (`.ai/<slug>/x/../state.json`) hid a protected workflow file from the file edit checks and from the shell write check: paths are normalized first.
+
 ## Unreleased — reviewer on GPT-6.2 Sol
 
 ### Changed
