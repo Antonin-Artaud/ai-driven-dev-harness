@@ -22,10 +22,10 @@ Each step between interactive agents is a **handoff** (`send: false`): you valid
 | `security-architect` (agent and architect subagent) | Models threats (STRIDE) and writes `security.md`: mitigations, `SEC-n` requirements per batch, residual risk. Does not code. Consulted by the architect when the brief or the change touches security, or started directly by you to analyse a plan |
 | `performance-architect` (agent and architect subagent) | Sets budgets, finds hot paths and volumes, plans measurements and writes `performance.md` with `PERF-n` requirements per batch. Does not code. Consulted the same way |
 | `builder` (agent) | Orchestrates the implementer, ui-ux-designer and reviewer, pushes the branch, opens the draft PR and handles PR comments |
-| `implementer` (hidden subagent) | Implements one batch with TDD (red-green-refactor): tests, code, architecture doc update, one commit |
+| `implementer` (hidden subagent) | Implements one batch with TDD (red-green-refactor): tests, code, mutation testing of the changed code when the project turns it on, architecture doc update, one commit |
 | `ui-ux-designer` (hidden subagent) | Implements the batches marked `Kind: ui`: the project's design system first, WCAG 2.1 AA accessibility, every state (loading, empty, error…), responsive, i18n, visual evidence when the project can produce it |
-| `reviewer` (hidden subagent) | Reviews `merge-base..HEAD` applying the project's skills first, checks the plan's `SEC-n` and `PERF-n` requirements, the UI checklist for UI batches and the architecture docs, then writes `review.md` |
-| `skills/` | `delivery-workflow`, `business-challenge`, `solution-design`, `security-design`, `performance-design`, `dotnet-performance`, `plan-execution`, `red-green-refactor`, `ui-ux-design`, `code-review`, `pr-feedback`, `azure-devops`, `project-onboarding`, `architecture-mapping` |
+| `reviewer` (hidden subagent) | Reviews `merge-base..HEAD` applying the project's skills first, checks the plan's `SEC-n` and `PERF-n` requirements, the UI checklist for UI batches and the architecture docs, reruns the mutation testing of the changed code, then writes `review.md` |
+| `skills/` | `delivery-workflow`, `business-challenge`, `solution-design`, `security-design`, `performance-design`, `dotnet-performance`, `plan-execution`, `red-green-refactor`, `mutation-testing`, `ui-ux-design`, `code-review`, `pr-feedback`, `azure-devops`, `project-onboarding`, `architecture-mapping` |
 | `com.github.copilot/hooks/hooks.json` | Deterministic `UserPromptSubmit`, `PreToolUse`, `SubagentStart`, `SubagentStop` and `Stop` guardrails (Python scripts, standard library only) |
 
 ### .NET projects
@@ -33,6 +33,12 @@ Each step between interactive agents is a **handoff** (`send: false`): you valid
 On a .NET project, the `dotnet-performance` skill aims for the most memory-efficient and fastest code possible, on two levels. **Level A** applies to all .NET code written: no-tracking EF Core reads (`AsNoTracking` or `QueryTrackingBehavior.NoTracking` by default), projections, no N+1, keyset pagination, `ExecuteUpdate`/`ExecuteDelete`, async all the way, source-generated logging and JSON, CA18xx analyzers. **Level B** applies to hot paths covered by a `PERF-n` requirement: `Span<T>`, `Memory<T>`, `stackalloc`, `ArrayPool<T>`, `ValueTask`, `SearchValues`, Pipelines, SIMD… with a before/after BenchmarkDotNet benchmark (`[MemoryDiagnoser]`). Each rule cites its Microsoft Learn source and the required version. Onboarding adds the **`ms-learn`** MCP server (Microsoft Learn documentation, no authentication) so the agents check APIs against the official documentation.
 
 The agents stay thin. The whole method lives in the skills, a portable format, and each project stays in control through its own skills: **the project's skills take precedence over the plugin's**.
+
+### Mutation testing
+
+Red-green-refactor proves that each test failed once; mutation testing proves that the tests pin the code. Once a batch is green, the implementer runs the project's mutation tool (Stryker.NET, StrykerJS, PIT, mutmut, Infection, cargo-mutants...) on the files it changed, kills the surviving mutants with new tests, and disables in the code, with a reason, only the equivalent ones. The gate is the **mutation score of the changed lines** (80% by default): legacy code around the change is reported but never blocks the batch. The reviewer reruns it on the whole branch; in `gate` mode a score below the threshold is a major finding, so the existing review gate holds the PR.
+
+The project turns it on in the **Mutation testing** part of the project contract (`AGENTS.md`): mode (`gate`, `report` or `off`), tool, command, report and threshold. Onboarding detects the stack, proposes the tool and keeps its output out of git. `skills/mutation-testing/scripts/mutation_gate.py` computes the score of the changed lines from a mutation-testing-elements JSON report (Stryker tools) or a PIT `mutations.xml`, and refuses a report older than the code. Design: [ADR 0010](docs/architecture/decisions/0010-mutation-testing-of-changed-code.md); tools, commands and sources: [the tools reference](skills/mutation-testing/references/tools.md).
 
 ## Prerequisites
 
@@ -73,9 +79,10 @@ In both cases the workspace must be trusted, otherwise the hooks do not run.
    - it infers the organization, project and repository from the `origin` remote;
    - it creates or completes `.vscode/mcp.json` with `ado-read` (read only) and `ado-write` (draft PR and comments only);
    - it adds `.ai/` to `.git/info/exclude`, without touching the team's `.gitignore`;
-   - with `--docs`, it creates the architecture map skeleton in `docs/architecture/` (or `--docs-path <folder>`), without overwriting existing files.
+   - with `--docs`, it creates the architecture map skeleton in `docs/architecture/` (or `--docs-path <folder>`), without overwriting existing files;
+   - it detects the stack and its mutation testing tool, and adds the tool's output folders to `.git/info/exclude` (`--mutation-tool <tool>` or `none` overrides the detection).
 3. It offers to map the application (`architecture-mapping` skill): it shows you the pages and the "To confirm" items, then commits them on a dedicated branch for a PR.
-4. It drafts the **AI delivery workflow** section of `AGENTS.md`: commands, base branch, glossary and an optional mapping between steps and the project's skills. It asks for your approval before writing.
+4. It drafts the **AI delivery workflow** section of `AGENTS.md`: commands, mutation testing settings (the tool is a new development dependency: you decide), base branch, glossary and an optional mapping between steps and the project's skills. It asks for your approval before writing.
 5. Commit `AGENTS.md`, and `.vscode/mcp.json` if git tracks it, on the base branch. The builder requires a clean working tree before creating its `ai/<slug>` branch.
 6. Start `ado-read` and `ado-write` from the MCP view (Entra sign-in), plus `ms-learn` on a .NET project (detected by a `*.sln`, `*.slnx`, `*.csproj` or `global.json`, or forced with `--dotnet`).
 
@@ -84,7 +91,7 @@ In both cases the workspace must be trusted, otherwise the hooks do not run.
 1. Select the **challenger** agent and give your request, or a work item ID or URL.
 2. Answer the questions (at most 5 per turn, each with a default answer) and validate `brief.md`. Then click **Design the solution**, or **Fast path** for a small change.
 3. The **architect** proposes options, challenges your vision and produces `plan.md`. Validate it, then click **Implement the plan**. Depending on the brief (`Concerns` line), it consults the **security-architect** and the **performance-architect**, folds their requirements into the batches and marks the UI batches (`Kind: ui`), which then go to the **ui-ux-designer**.
-4. The **builder** has the batches implemented and the branch reviewed (at most 2 review iterations, otherwise it hands back to you). It pushes the branch, then creates the draft PR linked to the work item; you confirm each of these two actions. It then archives the brief and the plan on the PR in the **🤖 Workflow record** thread.
+4. The **builder** has the batches implemented (tests first, then mutation testing when the project turns it on) and the branch reviewed (at most 2 review iterations, otherwise it hands back to you). It pushes the branch, then creates the draft PR linked to the work item; you confirm each of these two actions. It then archives the brief and the plan on the PR in the **🤖 Workflow record** thread.
 5. Review the draft PR in Azure DevOps and comment.
 6. Back in VS Code, click **Address PR feedback**. The builder enters the `triage` phase, classifies the comments and proposes **learnings**: the reusable rules your comments reveal, to add to the project's skills, its instructions or `AGENTS.md`. **You validate the classification and each learning**, then it fixes, commits the learnings separately (`docs(agents): …`), has the changes reviewed and replies to each thread. A comment made once does not have to be made again on the next PR.
 7. Publish the PR yourself, then ask the builder to **close** the workflow (or run `python <plugin>/scripts/close_workflow.py --repo .`): `phase` becomes `done`, `.ai/<slug>/` is archived in `.ai/archive/` and `.ai/current` is removed. You confirm the closing. The builder then shows you the **cost per agent** (below).

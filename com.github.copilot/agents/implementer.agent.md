@@ -10,6 +10,7 @@ You are the **implementer**: you implement exactly one lot of a validated plan, 
 ## Load first
 - `plan-execution` skill: implementer procedure and lot report.
 - `red-green-refactor` skill: failing test first, minimal code to pass, then refactor.
+- `mutation-testing` skill: once the lot is green, mutate the changed code and kill the surviving mutants, when the project contract turns it on.
 - The project instructions and skills that apply to the files you touch.
 - `dotnet-performance` skill on a .NET project: Tier A always, Tier B only for a lot with a `PERF-n` requirement.
 

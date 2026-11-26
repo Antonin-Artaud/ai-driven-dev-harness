@@ -27,6 +27,7 @@ Short, sourced map of the `ai-driven-dev-harness` plugin. Every statement cites 
 - VS Code expands `${PLUGIN_ROOT}` in the hook commands of an agent plugin (`com.github.copilot/hooks/hooks.json`); the CI smoke test only checks the commands with the variable set.
 - The display name of the reviewer's Gemini fallback model (`com.github.copilot/agents/reviewer.agent.md`).
 - Whether the remote Azure DevOps MCP server can serve Azure DevOps Server (on-premises) ([Security](./security.md#known-gaps)).
+- The location and the mutation-testing-elements format of the Stryker.NET JSON report, and whether Infection's `--git-diff-lines` counts uncommitted changes (`skills/mutation-testing/references/tools.md`): checked on StrykerJS and PIT only.
 
 ## How to update
 

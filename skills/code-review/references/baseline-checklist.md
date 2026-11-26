@@ -29,6 +29,7 @@ Fallback when no project skill or instruction covers a topic. Report only real, 
 ## Tests
 - Tests prove the behavior (they would fail without the change), are deterministic, and cover the acceptance criteria.
 - Bug fixes include a regression test.
+- When mutation testing is on: no surviving mutant on changed lines that guards an acceptance criterion or a `SEC-n` check; every mutant disabled in the code is equivalent and says why.
 
 ## UI (UI lots only)
 - The project's components and tokens are reused; no new UI dependency without a reason in the plan.

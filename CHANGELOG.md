@@ -2,6 +2,23 @@
 
 All notable changes of the `ai-driven-dev-harness` plugin. Versions follow [semantic versioning](https://semver.org/); the version lives in `plugin.json`.
 
+## 0.6.0 — unreleased — mutation testing
+
+Design: [ADR 0010](docs/architecture/decisions/0010-mutation-testing-of-changed-code.md).
+
+### Added
+- `mutation-testing` skill, loaded by the builder, the implementer, the ui-ux-designer and the reviewer: once a lot is green, the implementer mutates the files it changed, kills the surviving mutants with behavior tests (the mutant is the red step) and disables only equivalent mutants in the code, with a reason. The gate is the **mutation score of the changed lines** against the threshold of the project contract (80% by default); mutants on unchanged lines are reported, never blocking. The reviewer reruns it on the branch: in `gate` mode a score below the threshold, an unjustified disable comment or a changed file left out of the run is a major finding; a survivor in code that enforces a `SEC-n` requirement takes its severity.
+- `skills/mutation-testing/scripts/mutation_gate.py` (standard library): reads a mutation-testing-elements JSON report (StrykerJS, Stryker.NET, Stryker4s) or a PIT `mutations.xml`, keeps the mutants on the lines changed since the merge base (untracked files included), computes the score, lists survivors, disabled mutants and changed code files missing from the report, and refuses a report whose source differs from the working tree. Exit codes 0 passed, 2 below the threshold, 1 unusable report. Checked against real StrykerJS 10.1 and PIT 1.20 reports.
+- Tools reference (Stryker.NET, StrykerJS, PIT, mutmut, Infection, cargo-mutants): install, run on changed files, report, in-code disable syntax and output folders, each with its sources; unverified points are marked "To confirm".
+- Project contract: a **Mutation testing** part (mode `gate`, `report` or `off`, tool, command, report, threshold, code not mutated). Without it, mutation testing is off.
+- `onboard.py` detects the stacks from their marker files, reports the matching tool in `mutation_testing` and adds its output folders to `.git/info/exclude`, so a run does not trip the review gate's clean tree check; `--mutation-tool <tool>` (repeatable) or `none` overrides the detection.
+- Lot report `Mutation testing` entry, plan header line, review template and PR description lines; red-green-refactor, solution-design (testing strategy), code-review (baseline checklist) and delivery-workflow point to the new skill.
+- Tests: `tests/test_mutation_gate.py`, onboarding detection, wiring and sourced tools reference in `tests/test_plugin_structure.py`.
+
+### Changed
+- The reviewer may run the project's mutation testing command and the gate script, and leaves the working tree as it found it.
+- This repository's contract sets mutation testing `off`, with the reason.
+
 ## Unreleased — reviewer on GPT-6.2 Sol
 
 ### Changed

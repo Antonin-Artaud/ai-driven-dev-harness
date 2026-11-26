@@ -1,6 +1,6 @@
 ---
 title: Containers
-verified_on: 2026-11-13
+verified_on: 2026-11-26
 sources:
   - plugin.json
   - com.github.copilot/
@@ -19,9 +19,10 @@ The units that make up the plugin and how they communicate (C4 level 2). Nothing
 | Skills | Markdown (`SKILL.md`) + assets and references | The whole method: procedures, templates, checklists | `skills/` |
 | Hooks | Python ≥ 3.9, standard library only | Deterministic `UserPromptSubmit`, `PreToolUse`, `SubagentStart`, `SubagentStop` and `Stop` gates | `com.github.copilot/hooks/hooks.json`, `scripts/hooks/` |
 | Close step | Python, standard library | Ends a workflow: `phase: done`, archive, `.ai/current` removed | `scripts/close_workflow.py` |
-| Onboarding script | Python, standard library | Sets up a target project (`.vscode/mcp.json`, `.git/info/exclude`, `docs/architecture/` skeleton) | `skills/project-onboarding/scripts/onboard.py` |
+| Onboarding script | Python, standard library | Sets up a target project (`.vscode/mcp.json`, `.git/info/exclude` with the mutation tool's output folders, `docs/architecture/` skeleton) | `skills/project-onboarding/scripts/onboard.py` |
+| Mutation gate script | Python, standard library | Mutation score of the changed lines from a mutation-testing-elements or PIT report, run by the implementer and the reviewer | `skills/mutation-testing/scripts/mutation_gate.py` |
 | `.ai/` working files | Markdown and JSON in the target project, never committed | Workflow state and artifacts, hook state and decision log | `skills/delivery-workflow/SKILL.md` |
-| Test suite | `unittest` | Tests of the hooks, the onboarding script and the plugin structure | `tests/`, `.github/workflows/ci.yml` |
+| Test suite | `unittest` | Tests of the hooks, the onboarding script, the mutation gate script and the plugin structure | `tests/`, `.github/workflows/ci.yml` |
 
 ## Communication
 
@@ -29,6 +30,7 @@ The units that make up the plugin and how they communicate (C4 level 2). Nothing
 - The hooks read the workflow state in `.ai/`, write their own state and log there, and call git as a subprocess (`scripts/hooks/workflow_gate.py`).
 - The agents talk to Azure DevOps through the `ado-read` and `ado-write` HTTP MCP servers, declared in the target project's `.vscode/mcp.json` (`skills/project-onboarding/scripts/onboard.py`).
 - The builder delegates to the `implementer` and `reviewer` subagents, which do not see its conversation (`com.github.copilot/agents/builder.agent.md`).
+- The implementer and the reviewer run the target project's mutation testing tool, then `mutation_gate.py` on its report; the script reads the report and calls git as a subprocess (`skills/mutation-testing/SKILL.md`).
 
 ```mermaid
 flowchart TB
@@ -44,4 +46,6 @@ flowchart TB
   agents -->|write| ai
   agents -->|MCP HTTP| mcp[ado-read / ado-write]
   onboard[onboard.py] -->|writes| cfg[.vscode/mcp.json,<br/>docs/architecture/]
+  agents -->|run| gate[mutation_gate.py]
+  gate -->|reads report, git diff| git
 ```

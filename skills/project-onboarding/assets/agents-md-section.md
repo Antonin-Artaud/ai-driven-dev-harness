@@ -10,6 +10,15 @@
 | Lint | `<command or n/a>` |
 | Test | `<command>` |
 
+### Mutation testing
+<!-- mutation-testing skill. Mode: gate (threshold enforced by the reviewer), report (never blocking) or off (give the reason). -->
+- Mode: `<gate | report | off: reason>`
+- Tool: `<Stryker.NET | StrykerJS | PIT | mutmut | Infection | cargo-mutants>`
+- Command: `<command that mutates a list of files>` (run from `<folder>`)
+- Report: `<path>` (`<mutation-testing-elements | pitest-xml | tool>`)
+- Threshold: `<80>`% of the mutants on changed lines detected
+- Not mutated: `<generated code, migrations... excluded in the tool configuration | none>`
+
 ### Repository
 - Base branch: `<main>`
 - Azure DevOps: organization `<org>`, project `<project>`, repository `<repository>`

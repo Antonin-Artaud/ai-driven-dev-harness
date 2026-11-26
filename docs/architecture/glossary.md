@@ -20,6 +20,9 @@ sources:
 | Draft PR | Unpublished Azure Repos PR; only the user publishes it | `isDraft: true` |
 | Escalation | Legitimate stop of the workflow when the user must decide, with its origin phase and reason | `phase: escalated`, `state.escalation` |
 | TDD cycle | Red-green-refactor evidence per behavior in the implementer's lot report: failing test, green run, refactor | `red-green-refactor` skill |
+| Mutant | Small change the mutation testing tool makes to the production code (`>=` into `>`, a removed call...); **killed** when a test fails, **surviving** when no test notices it | `mutation-testing` skill |
+| Mutation score of the changed lines | Detected (killed + timeout) / valid (detected + survived + no coverage) mutants on the lines a lot or a branch added or changed; gated by the threshold of the project contract | `mutation_gate.py` |
+| Equivalent mutant | Mutant no test can tell from the real code; disabled in the code with the tool's comment and a reason | `mutation-testing` skill |
 | Test-first gate | `PreToolUse` rule: a build or feedback commit that changes code without any test file asks the user | `evaluate_commit` |
 | Validation | The user's explicit approval of the brief or the plan, recorded with its date and HEAD | `brief_validated`, `plan_validated` |
 | Triage | Classification of the PR comments (fix, discuss, decline) before any change, in its own ungated phase | `phase: triage`, `feedback.md` |

@@ -12,6 +12,9 @@
 | Lint | n/a |
 | Test | `python -m unittest -v` from `tests/` (`python3` on Linux and macOS) |
 
+### Mutation testing
+- Mode: `off` — the hooks' suite runs real git repositories in subprocesses (about 25 s per run), too slow to replay per mutant; sizing a scoped run (for example mutmut on `scripts/hooks/`, POSIX only) is a follow-up
+
 ### Repository
 - Base branch: `main`
 - Hosting: GitHub, `Antonin-Artaud/ai-driven-dev-harness` (the workflow's Azure Repos draft PR step does not apply to this repository yet)
