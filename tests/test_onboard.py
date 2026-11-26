@@ -271,6 +271,52 @@ class OnboardScriptTestCase(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(sorted(json.loads(self.mcp.read_text(encoding="utf-8"))["servers"]), ["ms-learn"])
 
+    def test_mutation_tools_are_detected_and_their_output_excluded(self) -> None:
+        self.repo.write("src/App/App.csproj", "<Project />\n")
+        self.repo.commit_file("web/package.json", "{}\n", "chore: web")
+        code, summary = self.run_onboard()
+        self.assertEqual(code, 0)
+        tools = summary["mutation_testing"]["tools"]
+        self.assertEqual([tool["tool"] for tool in tools], ["stryker-net", "stryker-js"])
+        self.assertEqual(tools[0]["source"], "src/App/App.csproj")
+        self.assertEqual(tools[1]["source"], "web/package.json")
+        for entry in ("StrykerOutput/", ".stryker-tmp/", "reports/mutation/", "reports/stryker-incremental.json"):
+            self.assertIn(entry, self.exclude_lines())
+        self.assertIn("StrykerOutput/", summary["git_exclude"]["added"])
+        self.assertTrue(any("Mutation testing" in step for step in summary["next_steps"]))
+        code, again = self.run_onboard()
+        self.assertEqual(again["git_exclude"]["added"], [])
+
+    def test_mutation_tool_override_dry_run_and_none(self) -> None:
+        self.repo.write("pyproject.toml", "[project]\nname = 'demo'\n")
+        code, summary = self.run_onboard("--dry-run")
+        self.assertEqual([tool["tool"] for tool in summary["mutation_testing"]["tools"]], ["mutmut"])
+        self.assertIn("mutants/", summary["git_exclude"]["added"])
+        self.assertNotIn("mutants/", self.exclude_lines())
+        code, summary = self.run_onboard("--mutation-tool", "none")
+        self.assertEqual(summary["mutation_testing"], {"tools": [], "exclude": []})
+        self.assertNotIn("mutants/", self.exclude_lines())
+        self.assertTrue(any("off" in step for step in summary["next_steps"] if "Mutation testing" in step))
+        code, summary = self.run_onboard("--mutation-tool", "pitest", "--mutation-tool", "cargo-mutants")
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            summary["mutation_testing"]["tools"],
+            [
+                {"tool": "pitest", "stack": "JVM (Java)", "source": "--mutation-tool"},
+                {"tool": "cargo-mutants", "stack": "Rust", "source": "--mutation-tool"},
+            ],
+        )
+        for entry in ("target/pit-reports/", "build/reports/pitest/", "mutants.out/", "mutants.out.old/"):
+            self.assertIn(entry, self.exclude_lines())
+
+    def test_mutation_tools_follow_the_mutation_testing_skill(self) -> None:
+        tools = (ONBOARD.parents[2] / "mutation-testing" / "references" / "tools.md").read_text(encoding="utf-8")
+        for name, spec in onboard.MUTATION_TOOLS.items():
+            with self.subTest(tool=name):
+                self.assertIn(f"`{name}`", tools)
+                for entry in spec["exclude"]:
+                    self.assertIn(f"`{entry}`", tools)
+
     def test_not_a_git_repository(self) -> None:
         folder = self.repo.base / "plain"
         folder.mkdir()

@@ -71,6 +71,7 @@ Still open:
 - **MCP server names.** Azure DevOps tools are recognized by name on a server whose prefix contains `ado`, `azure`, `devops` or `vsts`, or without prefix. A server registered under another name escapes the Azure DevOps rules (its tools are still filtered by `X-MCP-Tools` when it is `ado-write`).
 - **Fail-open.** A hook crash or timeout (15 s) lets the call through, except Azure DevOps write tools and writes mentioning protected workflow files, which are denied on exception. The hooks run only in a trusted workspace with `chat.useHooks` enabled; the heartbeat check is an instruction, not a guarantee.
 - **No active workflow, no rule.** Without `.ai/current`, or once the workflow is `done`, no rule applies.
-- **Shell commands of the reviewer** are limited to inspection by its instructions only.
+- **Shell commands of the reviewer** are limited to inspection, the project's test and lint commands and its mutation testing command by its instructions only.
+- **Mutation gate.** No hook checks the mutation score ([ADR 0010](./decisions/0010-mutation-testing-of-changed-code.md)): the reviewer reruns the tool and turns a score below the threshold into a finding. `mutation_gate.py` refuses a mutation-testing-elements report older than the code, but cannot date a PIT report or a tool's console output.
 - **Azure DevOps Server (on-premises)**: whether the remote MCP server can serve it is **To confirm**; `onboard.py` generates no MCP configuration for such remotes.
 - **Pushes to another remote** (`git push https://other/repo ai/<slug>`) are only checked for the branch name.

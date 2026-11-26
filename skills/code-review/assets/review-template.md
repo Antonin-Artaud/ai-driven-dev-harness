@@ -26,6 +26,7 @@ iteration: 1
 
 ## Verification
 - `<command>` → <result>
+- Mutation testing (<gate | report | off>): `<command>` → <summary of the gate script: score of the changed lines, threshold, survivors> | off: <reason>
 
 ## Since the previous iteration
 <Resolved and still open findings, or "first review".>

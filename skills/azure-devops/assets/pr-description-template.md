@@ -10,6 +10,7 @@
 
 ## How it was verified
 - <Tests added or updated; commands and results>
+- Mutation testing: <score of the changed lines> (threshold <n>%, <gate | report>) | off
 - AI review: <verdict> after <n> iteration(s); <k> minor findings posted as 🤖 comments
 
 ## Out of scope and follow-ups

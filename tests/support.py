@@ -22,6 +22,7 @@ SUBAGENT = HOOKS_DIR / "subagent.py"
 USER_PROMPT = HOOKS_DIR / "user_prompt.py"
 CLOSE_WORKFLOW = PLUGIN_ROOT / "scripts" / "close_workflow.py"
 ONBOARD = PLUGIN_ROOT / "skills" / "project-onboarding" / "scripts" / "onboard.py"
+MUTATION_GATE = PLUGIN_ROOT / "skills" / "mutation-testing" / "scripts" / "mutation_gate.py"
 SLUG = "1234-demo"
 BRANCH = f"ai/{SLUG}"
 

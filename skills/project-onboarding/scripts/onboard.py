@@ -6,6 +6,8 @@
 * Creates or merges ``.vscode/mcp.json`` with the ``ado-read`` and ``ado-write`` servers, and with the
   read-only Microsoft Learn documentation server ``ms-learn`` when the repository is a .NET project.
 * Adds ``.ai/`` (and a newly created, untracked ``.vscode/mcp.json``) to ``.git/info/exclude``.
+* Detects the stacks and their mutation testing tool (mutation-testing skill, ``references/tools.md``) and adds
+  the folders those tools write to ``.git/info/exclude``, so a mutation run leaves the working tree clean.
 * With ``--docs``: creates the architecture map skeleton (``docs/architecture/`` by default) without
   overwriting existing files; the architecture-mapping skill fills it.
 
@@ -27,6 +29,7 @@ import re
 import subprocess
 import sys
 from datetime import date
+from fnmatch import fnmatch
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import unquote, urlsplit, urlunsplit
@@ -45,6 +48,25 @@ DOTNET_MARKERS = ("*.sln", "*.slnx", "*.csproj", "*.fsproj", "*.vbproj", "global
 MCP_CONFIG = ".vscode/mcp.json"
 WORKFLOW_EXCLUDE = ".ai/"
 DOCS_DEFAULT = "docs/architecture"
+# Mutation testing tool per stack: marker file names and the output folders the tool writes in the repository
+# (defaults checked in the mutation-testing skill, references/tools.md).
+MUTATION_TOOLS: Dict[str, Dict[str, Any]] = {
+    "stryker-net": {"stack": ".NET (C#)", "markers": ("*.csproj",), "exclude": ("StrykerOutput/",)},
+    "stryker-js": {
+        "stack": "JavaScript and TypeScript",
+        "markers": ("package.json",),
+        "exclude": (".stryker-tmp/", "reports/mutation/", "reports/stryker-incremental.json"),
+    },
+    "pitest": {
+        "stack": "JVM (Java)",
+        "markers": ("pom.xml", "build.gradle", "build.gradle.kts"),
+        "exclude": ("target/pit-reports/", "build/reports/pitest/"),
+    },
+    "mutmut": {"stack": "Python", "markers": ("pyproject.toml", "setup.py", "setup.cfg"), "exclude": ("mutants/",)},
+    "infection": {"stack": "PHP", "markers": ("composer.json",), "exclude": ()},
+    "cargo-mutants": {"stack": "Rust", "markers": ("Cargo.toml",), "exclude": ("mutants.out/", "mutants.out.old/")},
+}
+NO_MUTATION_TOOL = "none"
 DOCS_TEMPLATES = Path(__file__).resolve().parents[2] / "architecture-mapping" / "assets"
 DECISIONS_README = (
     "# Architecture decisions\n\n"
@@ -218,6 +240,37 @@ def detect_dotnet(root: Path, forced: bool) -> Dict[str, Any]:
     return {"detected": bool(found), "source": found}
 
 
+def repository_files(root: Path) -> List[str]:
+    """Tracked files, then untracked files git does not ignore."""
+    found: List[str] = []
+    for args in (("ls-files", "-z"), ("ls-files", "--others", "--exclude-standard", "-z")):
+        found += [path for path in (git(root, *args) or "").split("\0") if path]
+    return found
+
+
+def detect_mutation_tools(root: Path, forced: Optional[Sequence[str]]) -> Dict[str, Any]:
+    """Mutation testing tools of the stacks found in the repository (or forced with --mutation-tool)."""
+    tools: List[Dict[str, str]] = []
+    if forced:
+        names = [name for name in MUTATION_TOOLS if name in forced]
+        tools = [{"tool": name, "stack": MUTATION_TOOLS[name]["stack"], "source": "--mutation-tool"} for name in names]
+    else:
+        files = sorted(repository_files(root), key=lambda path: (path.count("/"), path))
+        for name, spec in MUTATION_TOOLS.items():
+            marker = next(
+                (
+                    path
+                    for path in files
+                    if any(fnmatch(path.rsplit("/", 1)[-1], pattern) for pattern in spec["markers"])
+                ),
+                None,
+            )
+            if marker:
+                tools.append({"tool": name, "stack": spec["stack"], "source": marker})
+    exclude = [entry for tool in tools for entry in MUTATION_TOOLS[tool["tool"]]["exclude"]]
+    return {"tools": tools, "exclude": exclude}
+
+
 def docs_server() -> Dict[str, Dict[str, Any]]:
     return {DOCS_SERVER: {"type": "http", "url": DOCS_ENDPOINT}}
 
@@ -379,6 +432,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument(
         "--docs-path", help=f"Folder of the architecture map, relative to the repository (default: {DOCS_DEFAULT})."
     )
+    parser.add_argument(
+        "--mutation-tool",
+        action="append",
+        choices=[*MUTATION_TOOLS, NO_MUTATION_TOOL],
+        help="Mutation testing tool of the project, instead of the detected ones (repeatable; 'none' for no tool).",
+    )
     args = parser.parse_args(argv)
     docs_path = None
     if args.docs or args.docs_path:
@@ -454,6 +513,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "and draft PR creation are unavailable."
             if remote
             else "no 'origin' remote: add the Azure Repos remote, then rerun this script."
+        )
+    mutation = detect_mutation_tools(root, args.mutation_tool)
+    summary["mutation_testing"] = mutation
+    exclude += mutation["exclude"]
+    if mutation["tools"]:
+        next_steps.append(
+            "Mutation testing: install "
+            + ", ".join(tool["tool"] for tool in mutation["tools"])
+            + " in the project and fill the 'Mutation testing' part of the project contract (mutation-testing "
+            "skill), or set its mode to off."
+        )
+    else:
+        next_steps.append(
+            "Mutation testing: no tool detected. Set the 'Mutation testing' mode of the project contract to off, "
+            "or pick a tool from the mutation-testing skill and rerun with --mutation-tool."
         )
     summary["git_exclude"] = ensure_excluded(root, exclude, args.dry_run)
     summary["architecture_docs"] = scaffold_docs(root, docs_path, args.dry_run) if docs_path else None

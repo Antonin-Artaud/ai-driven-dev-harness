@@ -84,6 +84,7 @@ class SkillsTestCase(unittest.TestCase):
             "code-review",
             "pr-feedback",
             "red-green-refactor",
+            "mutation-testing",
         ):
             with self.subTest(skill=name):
                 meta = parse_frontmatter((SKILLS_DIR / name / "SKILL.md").read_text(encoding="utf-8"))
@@ -112,6 +113,43 @@ class SkillsTestCase(unittest.TestCase):
         self.assertIn("Specialists consulted", plan)
         checklist = (SKILLS_DIR / "code-review" / "references" / "baseline-checklist.md").read_text(encoding="utf-8")
         self.assertIn("## UI (UI lots only)", checklist)
+
+    def test_mutation_testing_is_wired_into_the_workflow(self) -> None:
+        for agent in ("builder", "implementer", "ui-ux-designer", "reviewer"):
+            with self.subTest(agent=agent):
+                text = (AGENTS_DIR / f"{agent}.agent.md").read_text(encoding="utf-8")
+                self.assertIn("`mutation-testing` skill", text)
+        for name in ("plan-execution", "code-review", "red-green-refactor", "solution-design", "project-onboarding"):
+            with self.subTest(skill=name):
+                text = (SKILLS_DIR / name / "SKILL.md").read_text(encoding="utf-8")
+                self.assertIn("`mutation-testing` skill", text)
+        self.assertIn("Mutation testing:", (SKILLS_DIR / "plan-execution" / "SKILL.md").read_text(encoding="utf-8"))
+        for template in (
+            SKILLS_DIR / "solution-design" / "assets" / "plan-template.md",
+            SKILLS_DIR / "code-review" / "assets" / "review-template.md",
+            SKILLS_DIR / "azure-devops" / "assets" / "pr-description-template.md",
+        ):
+            with self.subTest(template=template.name):
+                self.assertIn("Mutation testing", template.read_text(encoding="utf-8"))
+        contract = (SKILLS_DIR / "project-onboarding" / "assets" / "agents-md-section.md").read_text(encoding="utf-8")
+        self.assertIn("### Mutation testing", contract)
+        for setting in ("Mode:", "Tool:", "Command:", "Report:", "Threshold:"):
+            self.assertIn(setting, contract)
+
+    def test_mutation_tools_are_sourced(self) -> None:
+        text = (SKILLS_DIR / "mutation-testing" / "references" / "tools.md").read_text(encoding="utf-8")
+        sections = text.split("\n## ")[1:]
+        tools = [section for section in sections if not section.startswith("Other stacks")]
+        self.assertGreaterEqual(len(tools), 6)
+        for section in tools:
+            heading = section.splitlines()[0]
+            with self.subTest(tool=heading):
+                self.assertRegex(heading, r"\(`[a-z]+(-[a-z]+)*`\)", "the tool id of onboard.py --mutation-tool")
+                sources = [line for line in section.splitlines() if line.startswith("- **Sources:**")]
+                self.assertEqual(len(sources), 1)
+                self.assertIn("https://", sources[0])
+                for field in ("**Install:**", "**Report for the gate:**", "**Disable a mutant in the code:**"):
+                    self.assertIn(field, section)
 
     def test_dotnet_performance_rules_are_sourced(self) -> None:
         folder = SKILLS_DIR / "dotnet-performance"

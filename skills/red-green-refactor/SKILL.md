@@ -30,6 +30,10 @@ Keep the steps small: when a test needs a lot of code to pass, write a smaller t
 - **When test-first is not feasible** (pure configuration, generated code, documentation, a spike agreed in the plan, code without any test harness), say so in the lot report with the reason and the alternative check you ran. Missing test infrastructure the lot needs is a `PLAN DEVIATION`, not a reason to skip tests silently.
 - **Only the user waives the tests.** In the `build` and `feedback` phases, the `PreToolUse` hook asks the user to confirm any commit that changes code without a test file (gates reference of the `delivery-workflow` skill). Never rename files or split a commit to get around it. If the user denies the commit, write the failing test first; if the project has no test harness at all (a legacy project without unit or end-to-end tests), report a `PLAN DEVIATION` so that the user decides, once, between adding a harness and accepting lots without tests.
 
+## Mutation testing
+
+Red-green-refactor proves that each test failed once, not that the suite pins every behavior: the hard-coded values of a green step, a branch added while refactoring or a weak assertion can stay untested. When the project contract turns mutation testing on, the `mutation-testing` skill checks the lot once it is green: each surviving mutant on a changed line is a missing red step. Killing it follows this cycle, with the mutant as the red: the new test passes on the real code, and the rerun of the mutation tool shows the mutant killed (report it in the `TDD cycle`).
+
 ## Evidence in the lot report
 
 The implementer adds a `TDD cycle` entry to the lot report of the `plan-execution` skill, one line per behavior:
