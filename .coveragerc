@@ -4,6 +4,7 @@
 source =
     scripts
     skills/project-onboarding/scripts
+    skills/mutation-testing/scripts
 parallel = True
 relative_files = True
 

@@ -74,7 +74,9 @@ jobs:
           ruff format --check .
 
       - name: Mypy (mypy.ini)
-        run: mypy scripts/hooks scripts/close_workflow.py scripts/usage_report.py skills/project-onboarding/scripts/onboard.py
+        run: >-
+          mypy scripts/hooks scripts/close_workflow.py scripts/usage_report.py
+          skills/project-onboarding/scripts/onboard.py skills/mutation-testing/scripts/mutation_gate.py
 
       # Hooks run as subprocesses are measured through tests/sitecustomize.py.
       - name: Tests with coverage (minimum 80%)
