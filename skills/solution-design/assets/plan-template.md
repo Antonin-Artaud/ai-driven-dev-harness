@@ -2,6 +2,7 @@
 
 - Brief: `.ai/<slug>/brief.md` · Path: <fast | standard | feature>
 - Base branch: `<base>` · Work branch: `ai/<slug>`
+- Repositories: <multi-repository project only: `api` (base `main`), `web` (base `develop`), as listed in `state.repositories` | omit this line for a single repository>
 - Build / lint / test commands: `<from the project contract>`
 - Mutation testing: <gate | report, tool, threshold <n>% of the changed lines, from the project contract | off: <reason, or "not configured in the project contract">>
 - Stack: <e.g. .NET 9, C# 13, EF Core 9 — `dotnet-performance` Tier A; Tier B in scope: yes (PERF-n) | no> (or the stack of the project)
@@ -39,6 +40,7 @@
 ## Lots
 ### Lot 1 — <title>
 - **Kind:** <code | ui>
+- **Repository:** <multi-repository project only: the one folder of `state.repositories` this lot changes and commits in>
 - **Goal:** …
 - **Tasks:**
   1. `<path>` — <change> — done when <criterion>

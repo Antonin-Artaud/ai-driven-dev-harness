@@ -2,7 +2,7 @@
 
 This page is the single source for the hook rules. The README, the architecture docs and the other skills link here.
 
-The hooks (`com.github.copilot/hooks/hooks.json`, scripts in `scripts/hooks/`) only act in a repository with an active workflow: `.ai/current` names a slug whose `state.json` phase is not `done`. A denial is not an obstacle to work around: read its reason, fix the precondition, or escalate to the user.
+The hooks (`com.github.copilot/hooks/hooks.json`, scripts in `scripts/hooks/`) only act where a workflow is active: `.ai/current` names a slug whose `state.json` phase is not `done`. They look for `.ai/current` from the working folder up to the folder that holds its git repository: the repository root, or the workspace of a multi-repository project (`delivery-workflow` skill). In a workspace, they govern the workflow root and the repositories listed in `repositories`; another repository of the same folder works without the gates. A denial is not an obstacle to work around: read its reason, fix the precondition, or escalate to the user.
 
 ## Files the hooks protect
 
@@ -22,8 +22,8 @@ None of these files is ever written from the shell (`>`, `Set-Content`, `cp`, `s
 |---|---|---|
 | (new file) | `challenge` | — |
 | `challenge` | `design`, `escalated` | `design`: `brief_validated` set |
-| `design` | `challenge`, `build`, `escalated` | `build`: `brief_validated` and `plan_validated` set, neither file changed since its validation; `review_iterations: 0` |
-| `build` | `pr-open`, `escalated` | `pr-open`: `pull_request` set and an `APPROVED` review of a clean HEAD |
+| `design` | `challenge`, `build`, `escalated` | `build`: `brief_validated` and `plan_validated` set, neither file changed since its validation; `review_iterations: 0`; the workflow root is a git repository, or each entry of `repositories` is the root of one |
+| `build` | `pr-open`, `escalated` | `pr-open`: `pull_request` set and an `APPROVED` review of a clean HEAD (multi-repository: every repository with changes has its `pull_request`, every repository is clean and the review approves each HEAD with changes) |
 | `pr-open` | `triage`, `escalated` | — |
 | `triage` | `feedback`, `pr-open`, `escalated` | `feedback`: `feedback.md` exists and the user wrote after it; `review_iterations: 0` |
 | `feedback` | `pr-open`, `escalated` | `APPROVED` review of a clean HEAD |
@@ -33,6 +33,7 @@ None of these files is ever written from the shell (`>`, `Set-Content`, `cp`, `s
 Other rules on every edit:
 
 - `slug` and `branch` (`ai/<slug>`) never change; `pull_request` and `record_thread` are set once; `base_branch` only changes before the build.
+- `repositories` is a list of folders relative to the workflow root (strings, or objects with `path` and an optional `base_branch`, `pull_request`, `record_thread`): each a folder directly in the workflow root (`api`, not `services/api`, no absolute path, no `..`, not `.ai/`), no duplicate. Its folders and base branches only change before the build (`challenge`, `design`, `escalated`); the `pull_request` and `record_thread` of each entry are set once. When it lists repositories, the top-level `pull_request` and `record_thread` stay empty.
 - `brief_validated` and `plan_validated` are `{"at": "<ISO date>", "head": "<HEAD sha>"}` and need a user message after the last write of `brief.md` or `plan.md`. Do not edit the file after the user validates it: the validation would be stale.
 - `review_iterations` grows by one per reviewer run, never decreases within a cycle and never exceeds 2: once two reviews still request changes, escalate.
 - `lots_done` is append-only within a build cycle.
@@ -53,8 +54,8 @@ The caller is recognized by the `agent_type` field of hooks fired in a subagent,
 
 ## Stop gates
 
-- **Review gate:** in `build` and `feedback`, the main agent cannot finish while there are uncommitted changes (untracked files that existed when the build started excepted), or while `review.md` is missing, stale (`reviewed_sha` ≠ HEAD) or not `APPROVED`. After 2 iterations the message asks to escalate.
-- **Record gate:** in `pr-open`, once the draft PR exists, the main agent cannot finish until `record_thread` is set.
+- **Review gate:** in `build` and `feedback`, the main agent cannot finish while there are uncommitted changes (untracked files that existed when the build started excepted), or while `review.md` is missing, stale (`reviewed_sha` ≠ HEAD) or not `APPROVED`. After 2 iterations the message asks to escalate. In a multi-repository workflow, every listed repository must be clean, and `reviewed_sha` must name the HEAD of each repository with changes (`api=<sha> web=<sha>`); a repository still at its merge base with `base_branch` needs no entry.
+- **Record gate:** in `pr-open`, once a draft PR exists, the main agent cannot finish until its `record_thread` is set (each PR of a multi-repository workflow).
 - The Stop hook blocks at most 3 times in a row, then lets the stop through and logs it. A user prompt or an allowed stop resets the count.
 
 ## Shell commands
@@ -72,6 +73,8 @@ The caller is recognized by the `agent_type` field of hooks fired in a subagent,
 | other `az devops/repos/boards/pipelines/artifacts` commands that are not `list` or `show` | ask |
 | `curl`, `wget`, `Invoke-RestMethod`, `Invoke-WebRequest` to `dev.azure.com` or `*.visualstudio.com` | deny |
 
+Push and commit rules apply to the repository the command runs in. The hooks start from the folder of the tool call and follow `cd`, `chdir`, `pushd`, `popd`, `Set-Location` (`sl`, `Push-Location`, `Pop-Location`) and `git -C`; a launched shell (`bash -c`, `pwsh -Command` ...) starts from the current folder and does not change it. A `cd` inside a subshell, a block or a pipe makes the folder unknown for the rest of the line. In a multi-repository workflow, a `git push` or a `git commit` (in `build` and `feedback`) from a folder the hooks cannot match to one of its repositories asks; force options and other destinations are still denied.
+
 The parser follows `;`, `&&`, `|`, subshells, wrappers and their options (`sudo -u`, `env -i`, `env -S`, `timeout`, `nice`, `xargs`, `find -exec`, `nohup`, `time`), launchers (`bash -c`, `cmd /c`, `pwsh -Command`, `iex`, `eval`), simple variables assigned on the same line (`g=git; $g push`), and git aliases (`-c alias.*`, `git config alias.*` on the same line, the git config, `!` shell aliases).
 
 ## Azure DevOps MCP tools
@@ -80,12 +83,12 @@ Tools are recognized by name (`repo_*`, `wit_*`, `wiki*`, `pipelines_*`, `testpl
 
 | Tool and action | Decision |
 |---|---|
-| `repo_pull_request_write` `create` | the draft PR gate (`azure-devops` skill): phase `build`, no PR yet, `isDraft: true`, no autocomplete or bypass, description ≤ 4000 UTF-16 units, repository and project of `origin`, clean tree, `APPROVED` review of HEAD, current branch `ai/<slug>` as source, `base_branch` as target, HEAD pushed; then ask, showing repository, project, source and target |
-| `repo_pull_request_write` `update` | only `title`, `description`, `isDraft: true` on `state.pull_request`; anything else denied |
+| `repo_pull_request_write` `create` | the draft PR gate (`azure-devops` skill): phase `build`, no PR yet, `isDraft: true`, no autocomplete or bypass, description ≤ 4000 UTF-16 units, repository and project of `origin`, clean tree, `APPROVED` review of HEAD, current branch `ai/<slug>` as source, `base_branch` as target, HEAD pushed; then ask, showing repository, project, source and target. Multi-repository: `repositoryId` must name one of the workflow's repositories (its Azure Repos name from `origin`; folder or origin name otherwise; not a GUID), and the checks apply to that repository: no PR yet for it, commits on top of its base branch, its own `base_branch` |
+| `repo_pull_request_write` `update` | only `title`, `description`, `isDraft: true` on a PR of the workflow (`pull_request`, or the `pull_request` of an entry of `repositories`); anything else denied |
 | `repo_pull_request_write` `vote`, `update_reviewers` | deny |
-| `repo_pull_request_thread_write` `create`, `reply`, `update` | content starts with `🤖`, on `state.pull_request` |
-| `repo_pull_request_thread_write` `update_status` | ask (the hook cannot tell who opened the thread); denied on the workflow record thread |
+| `repo_pull_request_thread_write` `create`, `reply`, `update` | content starts with `🤖`, on a PR of the workflow |
+| `repo_pull_request_thread_write` `update_status` | ask (the hook cannot tell who opened the thread); denied on the workflow record thread of that PR |
 
 ## Observability
 
-Every decision (deny, ask), Stop block or release, subagent start and stop, close, hook error and web tool call is appended to `.ai/<slug>/log.jsonl` with the time, hook, tool, decision, reason, HEAD and phase. URLs with credentials and token arguments are redacted. The hooks refresh a heartbeat (time and plugin version) in `.ai/<slug>/.hooks.json`, at most once a minute.
+Every decision (deny, ask), Stop block or release, subagent start and stop, close, hook error and web tool call is appended to `.ai/<slug>/log.jsonl` with the time, hook, tool, decision, reason, HEAD (`{"<path>": "<sha>"}` for a multi-repository workflow) and phase. URLs with credentials and token arguments are redacted. The hooks refresh a heartbeat (time and plugin version) in `.ai/<slug>/.hooks.json`, at most once a minute.

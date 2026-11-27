@@ -3,10 +3,11 @@
 
 Sets ``phase: done`` (with ``closed_at`` and the reason) in ``.ai/<slug>/state.json``, moves
 ``.ai/<slug>/`` to ``.ai/archive/<slug>/`` (suffixed with a timestamp if that folder exists) and
-removes ``.ai/current``. The PreToolUse hook asks the user before an agent runs it. Prints a JSON
-summary whose ``usage_table`` is the Markdown table of the tokens and estimated credits of each
-agent (``usage_report.py``), to show the user; exit code 0 on success, 1 when there is nothing to
-close or the files cannot be moved.
+removes ``.ai/current``. ``.ai/`` is found like the hooks find it: at the repository root, or in
+the folder that holds the repositories of a multi-repository workspace. The PreToolUse hook asks
+the user before an agent runs it. Prints a JSON summary whose ``usage_table`` is the Markdown
+table of the tokens and estimated credits of each agent (``usage_report.py``), to show the user;
+exit code 0 on success, 1 when there is nothing to close or the files cannot be moved.
 
 Usage: python close_workflow.py [--repo <path>] [--reason <text>]
 """
@@ -29,9 +30,12 @@ import workflow_gate as wg  # noqa: E402
 
 
 def close(repo: Path, reason: str) -> Dict[str, Any]:
-    root = wg.find_repo_root(repo)
+    root = wg.find_workflow_root(repo)
     if root is None:
-        return {"ok": False, "error": f"'{repo}' is not inside a git repository."}
+        return {
+            "ok": False,
+            "error": f"no {wg.WORKFLOW_DIR}/ folder found from '{repo}' (repository root, or the folder above it).",
+        }
     slug = wg.read_current_slug(root)
     if slug is None:
         return {"ok": False, "error": "no active workflow: .ai/current is missing or invalid."}
@@ -70,7 +74,11 @@ def close(repo: Path, reason: str) -> Dict[str, Any]:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Close and archive the active delivery workflow.")
-    parser.add_argument("--repo", default=".", help="Path inside the git repository (default: current directory).")
+    parser.add_argument(
+        "--repo",
+        default=".",
+        help="Path inside the git repository or the multi-repository workspace (default: current directory).",
+    )
     parser.add_argument("--reason", default="closed by the user", help="Why the workflow is closed.")
     args = parser.parse_args(argv)
     result = close(Path(args.repo), args.reason)

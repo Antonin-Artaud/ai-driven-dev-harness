@@ -86,6 +86,24 @@ In both cases the workspace must be trusted, otherwise the hooks do not run.
 5. Commit `AGENTS.md`, and `.vscode/mcp.json` if git tracks it, on the base branch. The builder requires a clean working tree before creating its `ai/<slug>` branch.
 6. Start `ado-read` and `ado-write` from the MCP view (Entra sign-in), plus `ms-learn` on a .NET project (detected by a `*.sln`, `*.slnx`, `*.csproj` or `global.json`, or forced with `--dotnet`).
 
+### Multi-repository projects
+
+When a change usually spans several git repositories (an API and its front end, for example), put them side by side in one folder, open VS Code on that folder, and let `.ai/` live there, one level above the repositories:
+
+```
+workspace/          ← opened in VS Code: .ai/, AGENTS.md, .vscode/mcp.json
+├─ .ai/
+├─ api/             ← git repository
+└─ web/             ← git repository
+```
+
+- Onboard each repository with `onboard.py --repo <workspace>/<repo> --workspace <workspace>`: the MCP configuration goes to the workspace, the `.ai/` exclusion to each repository. The workspace `AGENTS.md` lists the repositories (folder, Azure Repos repository, base branch, commands).
+- The challenger lists the repositories the workflow changes in `state.json` (`repositories`); the architect gives each lot its repository. The list is fixed once the build starts.
+- The builder creates `ai/<slug>` in each listed repository, has all of them reviewed together (`reviewed_sha: api=<sha> web=<sha>`), and opens **one draft PR per repository with commits**, each with its own workflow record thread.
+- The hooks look for `.ai/` from the working folder up to the folder that holds its repository, never higher. They govern the listed repositories only, and check every push and commit in the repository it runs in (`cd`, `pushd`, `git -C` are followed).
+
+With a single repository, nothing changes: `.ai/` stays at the repository root.
+
 ## Usage
 
 1. Select the **challenger** agent and give your request, or a work item ID or URL.
@@ -135,7 +153,7 @@ Lifecycle: the architect reads the map and looks at what changed since each page
 
 ## Guardrails (hooks)
 
-The hooks only act in a repository where a workflow is active (`.ai/current` present, `phase` other than `done`). The complete, up-to-date list of rules is in [the guardrails reference](skills/delivery-workflow/references/gates.md); in short:
+The hooks only act where a workflow is active (`.ai/current` present, `phase` other than `done`), in its repository or, for a [multi-repository project](#multi-repository-projects), in the workspace and the repositories it lists. The complete, up-to-date list of rules is in [the guardrails reference](skills/delivery-workflow/references/gates.md); in short:
 
 | Rule | Behaviour |
 |---|---|
@@ -152,7 +170,7 @@ The hooks only act in a repository where a workflow is active (`.ai/current` pre
 | File | Content |
 |---|---|
 | `.ai/current` | Active slug |
-| `.ai/<slug>/state.json` | Phase, track, branches, work item, brief and plan validations, completed batches, PR, record thread, review iterations, escalation, language |
+| `.ai/<slug>/state.json` | Phase, track, branches, work item, brief and plan validations, completed batches, PR, record thread, repositories (multi-repository projects), review iterations, escalation, language |
 | `.ai/<slug>/brief.md`, `plan.md` | Validated need, plan split into batches |
 | `.ai/<slug>/review.md` | Latest review, with `verdict`, `reviewed_sha`, `base_sha` and `iteration` in the header |
 | `.ai/<slug>/pr-description.md`, `feedback.md` | Draft PR description, comment classification and learnings |
@@ -161,7 +179,7 @@ The hooks only act in a repository where a workflow is active (`.ai/current` pre
 | `.ai/<slug>/.reviewer-active`, `.implementer-active` | Markers written by the hooks while a subagent runs |
 | `.ai/archive/<slug>/` | Closed workflows |
 
-These files stay local: the validated brief and plan outlive the PR thanks to the **🤖 Workflow record** thread, updated with a reply when the plan changes.
+`.ai/` sits at the repository root, or in the workspace of a [multi-repository project](#multi-repository-projects). These files stay local: the validated brief and plan outlive the PR thanks to the **🤖 Workflow record** thread, updated with a reply when the plan changes.
 
 ## Models
 
@@ -201,6 +219,7 @@ In the Local harness, the `model` field of an agent's header applies to subagent
 | The cost table shows `n/a` everywhere | The VS Code transcript has no recognized token counters: run `usage_report.py --probe <transcript>` (the path is in `usage.json`, key `transcripts`) and open an issue with its output. |
 | Understanding a hook decision | Read `.ai/<slug>/log.jsonl`: one line per decision, with the reason, the HEAD and the phase. |
 | Workflow finished but the hooks still act | Close it: `python <plugin>/scripts/close_workflow.py --repo .` |
+| A `git push` or `git commit` asks "cannot match to one of the workflow's repositories" | Multi-repository project: the hooks cannot tell which repository the command runs in (a `cd` in a variable, a subshell or an earlier terminal call). Use `git -C <repository> ...` or `cd <repository> && ...` in the same command. |
 | `onboard.py` exits with code 3 | `ado-read` or `ado-write` already exist with a different definition: compare, then rerun with `--force`. |
 
 ## Tests

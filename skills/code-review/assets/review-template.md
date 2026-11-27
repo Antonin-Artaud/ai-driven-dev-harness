@@ -1,7 +1,7 @@
 ---
 verdict: CHANGES_REQUESTED
-reviewed_sha: <full HEAD sha>
-base_sha: <full merge-base sha>
+reviewed_sha: <full HEAD sha>   # multi-repository: api=<full HEAD sha> web=<full HEAD sha>
+base_sha: <full merge-base sha>   # multi-repository: api=<sha> web=<sha>
 iteration: 1
 ---
 # Review — <title>

@@ -21,7 +21,7 @@ The units that make up the plugin and how they communicate (C4 level 2). Nothing
 | Close step | Python, standard library | Ends a workflow: `phase: done`, archive, `.ai/current` removed | `scripts/close_workflow.py` |
 | Onboarding script | Python, standard library | Sets up a target project (`.vscode/mcp.json`, `.git/info/exclude` with the mutation tool's output folders, `docs/architecture/` skeleton) | `skills/project-onboarding/scripts/onboard.py` |
 | Mutation gate script | Python, standard library | Mutation score of the changed lines from a mutation-testing-elements or PIT report, run by the implementer and the reviewer | `skills/mutation-testing/scripts/mutation_gate.py` |
-| `.ai/` working files | Markdown and JSON in the target project, never committed | Workflow state and artifacts, hook state and decision log | `skills/delivery-workflow/SKILL.md` |
+| `.ai/` working files | Markdown and JSON in the target project (repository root, or the workspace above several repositories), never committed | Workflow state and artifacts, hook state and decision log | `skills/delivery-workflow/SKILL.md` |
 | Test suite | `unittest` | Tests of the hooks, the onboarding script, the mutation gate script and the plugin structure | `tests/`, `.github/workflows/ci.yml` |
 
 ## Communication

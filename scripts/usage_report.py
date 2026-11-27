@@ -26,7 +26,7 @@ import workflow_gate as wg  # noqa: E402
 
 
 def workflow_directory(repo: Path, slug: Optional[str]) -> Optional[Path]:
-    root = wg.find_repo_root(repo)
+    root = wg.find_workflow_root(repo)
     if root is None:
         return None
     base = root / wg.WORKFLOW_DIR
@@ -49,7 +49,11 @@ def report(directory: Path, language: Optional[str] = None) -> Dict[str, Any]:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Token usage and estimated credits per agent of a delivery workflow.")
-    parser.add_argument("--repo", default=".", help="Path inside the git repository (default: current directory).")
+    parser.add_argument(
+        "--repo",
+        default=".",
+        help="Path inside the git repository or the multi-repository workspace (default: current directory).",
+    )
     parser.add_argument("--slug", help="Workflow slug, active or archived (default: the active workflow).")
     parser.add_argument("--lang", choices=("fr", "en"), help="Language of the table (default: state.json).")
     parser.add_argument("--json", action="store_true", help="Print the summary as JSON.")
@@ -60,7 +64,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
     directory = workflow_directory(Path(args.repo), args.slug)
     if directory is None:
-        sys.stderr.write("No workflow found: give --slug, or run it inside a repository with an active workflow.\n")
+        sys.stderr.write(
+            "No workflow found: give --slug, or run it inside a repository or workspace with an active workflow.\n"
+        )
         return 1
     result = report(directory, args.lang)
     if args.json:

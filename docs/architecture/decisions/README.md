@@ -14,3 +14,4 @@ One record per significant decision, numbered `0001`, `0002`..., written from th
 | [0008](./0008-stack-specific-performance-skills.md) | Stack-specific performance skills in two tiers, grounded in a documentation MCP server |
 | [0009](./0009-rename-ai-driven-dev-harness.md) | The plugin is renamed `ai-driven-dev-harness` |
 | [0010](./0010-mutation-testing-of-changed-code.md) | Mutation testing of the changed code, checked by the reviewer |
+| [0011](./0011-workflow-root-above-the-repositories.md) | The workflow root may sit one level above the repositories (multi-repository projects) |

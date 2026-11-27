@@ -1,6 +1,6 @@
 ---
 name: pr-feedback
-description: 'Feedback stage of the ai-driven-dev-harness, for the builder agent: address the comments of the workflow''s Azure Repos draft PR (state.pull_request): triage them (fix, discuss, decline) and propose learnings for the user to validate, delegate the fixes to the implementer, re-review, push, then reply to each thread. Use only within this delivery workflow, after the "Address PR feedback" handoff.'
+description: 'Feedback stage of the ai-driven-dev-harness, for the builder agent: address the comments of the workflow''s Azure Repos draft PR (state.pull_request, or one per repository): triage them (fix, discuss, decline) and propose learnings for the user to validate, delegate the fixes to the implementer, re-review, push, then reply to each thread. Use only within this delivery workflow, after the "Address PR feedback" handoff.'
 user-invocable: false
 ---
 
@@ -9,6 +9,7 @@ user-invocable: false
 ## Procedure
 
 1. **Locate the PR.** Read `.ai/current` and `state.json` (`pull_request`, `branch`, `record_thread`). Set `phase: triage` (no gate applies while you triage). Check out the work branch and update it from `origin/<branch>`: commits pushed by humans are reviewed with the fixes later.
+   In a multi-repository project (`state.repositories`, `delivery-workflow` skill), the PRs are the `pull_request` of each entry: do every step below for the threads of every PR, update the work branch of each repository, note the repository of each thread in `feedback.md`, give each fix lot its repository, and push each repository with new commits (`git -C <path> push`).
 2. **Collect the threads** with the `ado-read` tools: `repo_pull_request_thread` `list`, then `list_comments` when needed. Keep the active threads with human or AI comments; ignore system threads (votes, iterations, status changes), closed or resolved ones, and the workflow record thread.
 3. **Triage** each thread in `feedback.md` with the [feedback template](./assets/feedback-template.md):
    - **fix:** valid and in scope; describe the intended change;

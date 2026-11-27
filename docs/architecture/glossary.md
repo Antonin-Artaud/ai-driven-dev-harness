@@ -1,6 +1,6 @@
 ---
 title: Glossary
-verified_on: 2026-11-13
+verified_on: 2026-11-27
 sources:
   - skills/delivery-workflow/
   - README.md
@@ -9,7 +9,10 @@ sources:
 
 | Term | Definition | Name in the code |
 |---|---|---|
-| Active workflow | Repository where `.ai/current` exists and the phase is not `done`; the only case where the hooks act | `load_workflow` |
+| Active workflow | Workflow root where `.ai/current` exists and the phase is not `done`; the only case where the hooks act | `load_workflow` |
+| Workflow root | Folder that holds `.ai/`: the repository root, or the workspace one level above the repositories of a multi-repository project | `find_workflow_root` |
+| Workspace | Folder opened in VS Code that holds several git repositories side by side and the workflow's `.ai/` | `--workspace` of `onboard.py` |
+| Workflow repositories | Repositories a multi-repository workflow changes, each with its base branch, draft PR and record thread; the others of the workspace are not governed | `state.repositories`, `Workflow.repositories` |
 | Slug | Identifier of the current work, kebab-case, at most 40 characters, prefixed with the work item ID | `.ai/current`, `state.slug`, `SLUG_RE` |
 | Brief | Validated business need, with Given/When/Then acceptance criteria | `brief.md` |
 | Plan | Implementation plan split into lots, with the documentation impact | `plan.md` |

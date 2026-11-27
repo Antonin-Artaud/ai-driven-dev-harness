@@ -15,6 +15,10 @@ The hooks own four kinds of files under ``.ai/<slug>/`` that no agent may write:
 (heartbeat, time of the last user prompt, validation and escalation times), ``log.jsonl``
 (append-only decision log), ``usage.json`` (token usage per agent, ``usage.py``) and the subagent
 markers (``.reviewer-active``, ``.implementer-active``...).
+
+``.ai/`` sits in the *workflow root*: the root of the git repository, or, in a multi-repository
+workspace, the folder that holds the repositories (ADR 0011). A workflow changes the repositories
+listed in ``state.json`` (``repositories``), or the workflow root itself when none is listed.
 """
 
 from __future__ import annotations
@@ -35,6 +39,8 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 AI_MARKER = "\U0001f916"
 WORKFLOW_DIR = ".ai"
 ARCHIVE_DIR = "archive"
+# state.json field listing the repositories of a multi-repository workflow (ADR 0011).
+REPOSITORIES_FIELD = "repositories"
 INACTIVE_PHASES = frozenset({"done"})
 STOP_GATED_PHASES = frozenset({"build", "feedback"})
 PR_CREATION_PHASES = frozenset({"build"})
@@ -123,6 +129,58 @@ class HookInput:
         return subagent_name(self.agent)
 
 
+def _identifier(value: Any) -> Optional[str]:
+    """A PR or thread ID as text, or None when unset."""
+    return str(value).strip() if value not in (None, "", False) else None
+
+
+def _branch_name(value: Any) -> Optional[str]:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def normalize_repository_path(value: Any) -> Optional[str]:
+    """A repository folder relative to the workflow root, as a POSIX path (``.`` for the root itself).
+
+    None when the value is not a relative folder inside the workflow root (absolute, drive letter,
+    ``..``, or the ``.ai`` folder).
+    """
+    if not isinstance(value, str):
+        return None
+    text = value.strip().replace("\\", "/")
+    if not text or text.startswith("/") or re.match(r"^[A-Za-z]:", text):
+        return None
+    parts = [part for part in text.split("/") if part not in ("", ".")]
+    if ".." in parts or (parts and parts[0].lower() == WORKFLOW_DIR):
+        return None
+    return "/".join(parts) or "."
+
+
+def path_key(path: Path) -> str:
+    """Comparable form of a folder path (resolved, case-folded where the file system ignores case)."""
+    try:
+        resolved = path.resolve()
+    except (OSError, RuntimeError):
+        resolved = path
+    return os.path.normcase(str(resolved))
+
+
+@dataclass(frozen=True)
+class Repository:
+    """A git repository the workflow changes: its folder, base branch, draft PR and record thread."""
+
+    path: str
+    root: Path
+    base_branch: Optional[str]
+    pull_request: Optional[str] = None
+    record_thread: Optional[str] = None
+    listed: bool = True
+
+    @property
+    def prefix(self) -> str:
+        """Prefix of its paths relative to the workflow root (``api/``; empty for the root itself)."""
+        return "" if self.path == "." else f"{self.path}/"
+
+
 @dataclass
 class Workflow:
     root: Path
@@ -137,18 +195,82 @@ class Workflow:
 
     @property
     def base_branch(self) -> Optional[str]:
-        value = self.state.get("base_branch")
-        return value.strip() if isinstance(value, str) and value.strip() else None
+        return _branch_name(self.state.get("base_branch"))
 
     @property
     def branch(self) -> str:
-        """The work branch is always ``ai/<slug>``: state.json cannot redirect it."""
+        """The work branch is always ``ai/<slug>``, in every repository: state.json cannot redirect it."""
         return f"ai/{self.slug}"
 
     @property
     def pull_request(self) -> Optional[str]:
-        value = self.state.get("pull_request")
-        return str(value).strip() if value not in (None, "", False) else None
+        return _identifier(self.state.get("pull_request"))
+
+    @property
+    def listed_repositories(self) -> List[Repository]:
+        """The valid entries of ``state.repositories`` (strings or objects with a ``path``), in order."""
+        entries = self.state.get(REPOSITORIES_FIELD)
+        found: List[Repository] = []
+        seen = set()
+        for entry in entries if isinstance(entries, list) else []:
+            data = entry if isinstance(entry, dict) else {"path": entry}
+            path = normalize_repository_path(data.get("path"))
+            if path is None or path.casefold() in seen:
+                continue
+            seen.add(path.casefold())
+            found.append(
+                Repository(
+                    path=path,
+                    root=self.root if path == "." else self.root / path,
+                    base_branch=_branch_name(data.get("base_branch")) or self.base_branch,
+                    pull_request=_identifier(data.get("pull_request")),
+                    record_thread=_identifier(data.get("record_thread")),
+                )
+            )
+        return found
+
+    @property
+    def multi_repo(self) -> bool:
+        """True when ``state.repositories`` lists the repositories: PRs are then recorded per repository."""
+        return bool(self.listed_repositories)
+
+    @property
+    def repositories(self) -> List[Repository]:
+        """The repositories the workflow changes; the workflow root itself when none is listed."""
+        listed = self.listed_repositories
+        if listed:
+            return listed
+        return [
+            Repository(
+                ".", self.root, self.base_branch, self.pull_request, _identifier(self.state.get("record_thread"))
+            )
+        ]
+
+    @property
+    def default_repository(self) -> Optional[Repository]:
+        """The repository of a git command whose folder is unknown: the only one, else None."""
+        repositories = self.repositories
+        return repositories[0] if len(repositories) == 1 else None
+
+    def repository_for(self, repo_root: Path) -> Repository:
+        """The workflow repository rooted at ``repo_root``, or an unlisted one (no PR, top-level base branch)."""
+        key = path_key(repo_root)
+        for repository in self.repositories:
+            if path_key(repository.root) == key:
+                return repository
+        try:
+            label = repo_root.resolve().relative_to(self.root.resolve()).as_posix()
+        except (OSError, RuntimeError, ValueError):
+            label = str(repo_root)
+        return Repository(label, repo_root, self.base_branch, listed=False)
+
+    def pull_requests(self) -> Dict[str, Repository]:
+        """Draft PR ID -> repository, for every PR the workflow recorded."""
+        return {repository.pull_request: repository for repository in self.repositories if repository.pull_request}
+
+    def repository_label(self, repository: Repository) -> str:
+        """`` in api`` for messages about one repository of a multi-repository workflow, else empty."""
+        return f" in {repository.path}" if self.multi_repo else ""
 
     @property
     def review_path(self) -> str:
@@ -278,16 +400,57 @@ def git(cwd: Any, *args: str, strip: bool = True, timeout: float = GIT_TIMEOUT) 
     return out.strip() if strip else out
 
 
+def _resolved(cwd: Any) -> Optional[Path]:
+    try:
+        return Path(str(cwd)).resolve()
+    except (OSError, RuntimeError):
+        return None
+
+
 def find_repo_root(cwd: Any) -> Optional[Path]:
     """The closest folder holding ``.git`` (a folder, or a file for worktrees), without running git."""
-    try:
-        start = Path(str(cwd)).resolve()
-    except (OSError, RuntimeError):
+    start = _resolved(cwd)
+    if start is None:
         return None
     for folder in (start, *start.parents):
         if (folder / ".git").exists():
             return folder
     return None
+
+
+def _workflow_root_candidates(start: Path, repo: Optional[Path]) -> List[Path]:
+    """``start`` and its parents up to one level above its git repository (all of them outside a repository)."""
+    if repo is None:
+        return [start, *start.parents]
+    candidates: List[Path] = []
+    for folder in (start, *start.parents):
+        candidates.append(folder)
+        if folder == repo:
+            break
+    if repo.parent != repo:
+        candidates.append(repo.parent)
+    return candidates
+
+
+def find_workflow_root(cwd: Any) -> Optional[Path]:
+    """The folder holding the workflow's ``.ai/``, without running git (ADR 0011).
+
+    The closest folder with ``.ai/current``, from ``cwd`` up to the folder that holds its git
+    repository (every parent when ``cwd`` is outside a repository): the repository root of a
+    single-repository project, or the folder above several repositories. Without any
+    ``.ai/current``, the closest ``.ai/`` folder (archived workflows), else None.
+    """
+    start = _resolved(cwd)
+    if start is None:
+        return None
+    fallback: Optional[Path] = None
+    for folder in _workflow_root_candidates(start, find_repo_root(start)):
+        workflow_dir = folder / WORKFLOW_DIR
+        if (workflow_dir / "current").is_file():
+            return folder
+        if fallback is None and workflow_dir.is_dir():
+            fallback = folder
+    return fallback
 
 
 def read_current_slug(root: Path) -> Optional[str]:
@@ -314,8 +477,13 @@ def workflow_for(root: Path, slug: str) -> Workflow:
 
 
 def load_workflow(cwd: Any, include_inactive: bool = False) -> Optional[Workflow]:
-    """Return the active workflow of the repository containing ``cwd``, if any."""
-    root = find_repo_root(cwd)
+    """Return the active workflow that governs ``cwd``, if any.
+
+    When ``.ai/`` sits above the git repository holding ``cwd`` (multi-repository workspace), the
+    workflow governs that repository only if ``state.json`` lists it: another repository of the
+    same folder keeps working without the gates.
+    """
+    root = find_workflow_root(cwd)
     if root is None:
         return None
     slug = read_current_slug(root)
@@ -323,6 +491,9 @@ def load_workflow(cwd: Any, include_inactive: bool = False) -> Optional[Workflow
         return None
     workflow = workflow_for(root, slug)
     if workflow.phase in INACTIVE_PHASES and not include_inactive:
+        return None
+    repo = find_repo_root(cwd)
+    if repo is not None and root in repo.parents and not workflow.repository_for(repo).listed:
         return None
     return workflow
 
@@ -461,7 +632,7 @@ def log_event(
         "tool": tool,
         "decision": decision,
         "reason": redact(reason)[:500],
-        "head": head if head is not None else head_sha(workflow.root),
+        "head": head if head is not None else workflow_heads(workflow),
         "phase": workflow.phase,
     }
     entry.update({key: redact(value) if isinstance(value, str) else value for key, value in extra.items()})
@@ -540,9 +711,59 @@ def dirty_paths(root: Path, baseline: Optional[List[str]] = None) -> Optional[Li
     return paths
 
 
-def workflow_dirty_paths(workflow: Workflow) -> Optional[List[str]]:
-    baseline = workflow.hook_state().get("untracked_baseline")
-    return dirty_paths(workflow.root, baseline if isinstance(baseline, list) else None)
+def baseline_of(hook_state: Dict[str, Any], repository: Repository) -> List[str]:
+    """Untracked files of ``repository`` recorded when the build started (paths relative to it).
+
+    ``untracked_baseline`` holds paths relative to the workflow root (``api/notes.txt``); for a
+    single repository at the root, they are the repository paths themselves.
+    """
+    entries = hook_state.get("untracked_baseline")
+    prefix = repository.prefix
+    return [
+        entry[len(prefix) :]
+        for entry in (entries if isinstance(entries, list) else [])
+        if isinstance(entry, str) and entry.startswith(prefix)
+    ]
+
+
+def repository_dirty_paths(workflow: Workflow, repository: Repository) -> Optional[List[str]]:
+    """Uncommitted paths of one repository, relative to it, outside its build-start baseline."""
+    return dirty_paths(repository.root, baseline_of(workflow.hook_state(), repository))
+
+
+@dataclass
+class RepoStatus:
+    """HEAD, uncommitted paths (relative to the repository) and merge base of one workflow repository."""
+
+    repository: Repository
+    head: Optional[str]
+    dirty: Optional[List[str]]
+    merge_base: Optional[str] = None
+
+    @property
+    def changed(self) -> bool:
+        """Something to review: uncommitted paths, commits on top of the merge base, or an unknown merge base."""
+        return bool(self.dirty) or self.merge_base is None or self.head != self.merge_base
+
+
+def workflow_status(workflow: Workflow, with_merge_base: bool = False) -> List[RepoStatus]:
+    """The status of every repository of the workflow, in the order of ``state.repositories``."""
+    hook_state = workflow.hook_state()
+    statuses: List[RepoStatus] = []
+    for repository in workflow.repositories:
+        head = head_sha(repository.root)
+        dirty = dirty_paths(repository.root, baseline_of(hook_state, repository))
+        base = repository.base_branch
+        found = merge_base(repository.root, base) if with_merge_base and head and base else None
+        statuses.append(RepoStatus(repository, head, dirty, found))
+    return statuses
+
+
+def workflow_heads(workflow: Workflow) -> Any:
+    """HEAD of the workflow's repository, or ``{path: HEAD}`` for a multi-repository workflow (decision log)."""
+    if not workflow.multi_repo:
+        return head_sha(workflow.root)
+    return {repository.path: head_sha(repository.root) for repository in workflow.repositories}
 
 
 def review_iteration(review: Optional[Dict[str, str]]) -> Optional[int]:
@@ -554,48 +775,95 @@ def review_iteration(review: Optional[Dict[str, str]]) -> Optional[int]:
         return None
 
 
-def review_gate(
-    workflow: Workflow,
-    head: Optional[str] = None,
-    dirty: Optional[List[str]] = None,
-) -> Optional[str]:
-    """Return why HEAD is not covered by an approved review, or None when it is."""
-    head = head or head_sha(workflow.root)
-    if not head:
-        return "cannot resolve HEAD."
-    if dirty is None:
-        dirty = workflow_dirty_paths(workflow)
-        if dirty is None:
-            return "cannot read the working tree status (git status failed)."
+def reviewed_shas(value: str) -> Dict[str, str]:
+    """The ``reviewed_sha`` of review.md: ``<sha>``, or ``<path>=<sha>`` pairs in a multi-repository workflow.
+
+    Pairs are separated by spaces, commas or semicolons. Keys are case-folded repository paths;
+    a bare SHA is stored under ``""``.
+    """
+    found: Dict[str, str] = {}
+    for token in re.split(r"[\s,;]+", value.strip()):
+        if not token:
+            continue
+        path, separator, sha = token.rpartition("=")
+        if separator:
+            key = normalize_repository_path(path) or path
+            found[key.casefold()] = sha.strip().lower()
+        else:
+            found[""] = token.lower()
+    return found
+
+
+def _reviewed_sha_of(reviewed: Dict[str, str], repository: Repository, single: bool) -> str:
+    sha = reviewed.get(repository.path.casefold())
+    if sha is None and single:
+        sha = reviewed.get("")
+    return sha or ""
+
+
+def _short_heads(statuses: List[RepoStatus], multi: bool) -> str:
+    if not multi:
+        return (statuses[0].head or "")[:8]
+    return ", ".join(f"{status.repository.path}@{(status.head or '')[:8]}" for status in statuses)
+
+
+def review_gate(workflow: Workflow, statuses: Optional[List[RepoStatus]] = None) -> Optional[str]:
+    """Return why the work is not covered by an approved review, or None when it is.
+
+    Every repository must be clean; ``review.md`` must name the HEAD of each repository with
+    changes (of every repository when none has changes) and approve it.
+    """
+    multi = workflow.multi_repo
+    if statuses is None:
+        statuses = workflow_status(workflow, with_merge_base=len(workflow.repositories) > 1)
+    for status in statuses:
+        of = f" of {status.repository.path}" if multi else ""
+        if not status.head:
+            return f"cannot resolve HEAD{of}."
+        if status.dirty is None:
+            return f"cannot read the working tree status{of} (git status failed)."
+    dirty = [status.repository.prefix + path for status in statuses for path in status.dirty or []]
     if dirty:
         listed = ", ".join(dirty[:5]) + (" ..." if len(dirty) > 5 else "")
         return (
             f"uncommitted changes ({listed}). Commit the current lot first "
             "(plan-execution skill), then run the reviewer subagent."
         )
+    scope = [status for status in statuses if status.changed] or statuses
+    heads = _short_heads(scope, multi)
     review = workflow.review
     if review is None:
         return (
-            f"{workflow.review_path} is missing for HEAD {head[:8]}. "
+            f"{workflow.review_path} is missing for HEAD {heads}. "
             "Run the reviewer subagent on <merge-base>..HEAD (code-review skill)."
         )
-    reviewed = review.get("reviewed_sha", "").strip().lower()
-    if not _SHA_RE.match(reviewed) or not head.lower().startswith(reviewed):
-        return (
-            f"{workflow.review_path} reviewed {reviewed[:8] or 'nothing'} but HEAD is {head[:8]}. "
-            "Run the reviewer subagent on the new commits."
-        )
+    reviewed = reviewed_shas(review.get("reviewed_sha", ""))
+    for status in scope:
+        head = status.head or ""
+        sha = _reviewed_sha_of(reviewed, status.repository, len(statuses) == 1)
+        if not _SHA_RE.match(sha) or not head.lower().startswith(sha):
+            if not multi:
+                return (
+                    f"{workflow.review_path} reviewed {sha[:8] or 'nothing'} but HEAD is {head[:8]}. "
+                    "Run the reviewer subagent on the new commits."
+                )
+            path = status.repository.path
+            return (
+                f"{workflow.review_path} reviewed {sha[:8] or 'nothing'} for {path} but HEAD of {path} is "
+                f"{head[:8]}. Run the reviewer subagent on the new commits; its reviewed_sha lists "
+                "<path>=<HEAD sha> for every repository with changes (code-review skill)."
+            )
     verdict = review.get("verdict", "").strip().upper()
     if verdict != "APPROVED":
         iterations = workflow.state.get("review_iterations")
         if isinstance(iterations, int) and iterations >= MAX_REVIEW_ITERATIONS:
             return (
-                f"the review verdict for HEAD {head[:8]} is {verdict or 'missing'} after {iterations} review "
+                f"the review verdict for HEAD {heads} is {verdict or 'missing'} after {iterations} review "
                 'iterations, the limit. Escalate: set "phase": "escalated" with "escalation": '
                 '{"from": <phase>, "reason": ...} in state.json and ask the user.'
             )
         return (
-            f"the review verdict for HEAD {head[:8]} is {verdict or 'missing'}. Fix the blocker and "
+            f"the review verdict for HEAD {heads} is {verdict or 'missing'}. Fix the blocker and "
             f"major findings with the implementer subagent and review again (at most {MAX_REVIEW_ITERATIONS} "
             'iterations), or escalate ("phase": "escalated" with an "escalation" reason) and ask the user.'
         )

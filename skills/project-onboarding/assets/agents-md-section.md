@@ -24,6 +24,17 @@
 - Azure DevOps: organization `<org>`, project `<project>`, repository `<repository>`
 - Work branches: `ai/<slug>`
 
+<!-- Multi-repository workspace (the workspace AGENTS.md, one level above the repositories): replace the part above with
+### Repositories
+- Azure DevOps: organization `<org>`, project `<project>`
+- Work branches: `ai/<slug>` in each repository the workflow changes (`repositories` in state.json)
+
+| Folder | Azure Repos repository | Base branch | Build / test |
+|---|---|---|---|
+| `api` | `<repository>` | `<main>` | `<command>` |
+| `web` | `<repository>` | `<main>` | `<command>` |
+-->
+
 ### Architecture docs
 - Architecture docs: `<docs/architecture>` (kept up to date by every workflow PR; see the architecture-mapping skill)
 
