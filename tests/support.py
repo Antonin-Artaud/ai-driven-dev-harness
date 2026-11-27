@@ -1,4 +1,4 @@
-"""Test helpers: isolated git repositories, hook runners and a small front matter parser."""
+"""Test helpers: isolated git repositories and workspaces, hook runners and a small front matter parser."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import sys
 import tempfile
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 HOOKS_DIR = PLUGIN_ROOT / "scripts" / "hooks"
@@ -66,7 +66,58 @@ def isolated_env(home: Path) -> Dict[str, str]:
     return env
 
 
-class TempGitRepo:
+def write_review(directory: Path, review: Optional[Dict[str, str]]) -> None:
+    review_file = directory / "review.md"
+    if review is None:
+        if review_file.exists():
+            review_file.unlink()
+        return
+    lines = ["---", *(f"{key}: {value}" for key, value in review.items()), "---", "# Review", ""]
+    review_file.write_text("\n".join(lines), encoding="utf-8")
+
+
+def base_state(phase: str, base_branch: Optional[str]) -> Dict[str, Any]:
+    state: Dict[str, Any] = {
+        "slug": SLUG,
+        "phase": phase,
+        "path": "standard",
+        "branch": BRANCH,
+        "work_item": 1234,
+        "pull_request": None,
+        "review_iterations": 0,
+        "language": "fr",
+    }
+    if base_branch:
+        state["base_branch"] = base_branch
+    return state
+
+
+class WorkflowFolder:
+    """Readers of the hook-owned files under ``<path>/.ai/<slug>/``."""
+
+    path: Path
+
+    def hook_state(self) -> Dict[str, Any]:
+        path = self.path / ".ai" / SLUG / ".hooks.json"
+        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+    def set_hook_state(self, **values: Any) -> None:
+        path = self.path / ".ai" / SLUG / ".hooks.json"
+        data = self.hook_state()
+        data.update(values)
+        path.write_text(json.dumps(data), encoding="utf-8")
+
+    def state(self) -> Dict[str, Any]:
+        return json.loads((self.path / ".ai" / SLUG / "state.json").read_text(encoding="utf-8"))
+
+    def log_entries(self) -> List[Dict[str, Any]]:
+        path = self.path / ".ai" / SLUG / "log.jsonl"
+        if not path.exists():
+            return []
+        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+class TempGitRepo(WorkflowFolder):
     """A work repository on ``main`` with one commit, pushed to a local bare ``origin``."""
 
     def __init__(self, with_origin: bool = True) -> None:
@@ -125,50 +176,89 @@ class TempGitRepo:
         directory = self.path / ".ai" / SLUG
         directory.mkdir(parents=True, exist_ok=True)
         (self.path / ".ai" / "current").write_text(SLUG + "\n", encoding="utf-8")
-        state: Dict[str, Any] = {
-            "slug": SLUG,
-            "phase": phase,
-            "path": "standard",
-            "branch": BRANCH,
-            "work_item": 1234,
-            "pull_request": None,
-            "review_iterations": 0,
-            "language": "fr",
-        }
-        if base_branch:
-            state["base_branch"] = base_branch
+        state = base_state(phase, base_branch)
         state.update(state_overrides)
         (directory / "state.json").write_text(json.dumps(state, indent=2), encoding="utf-8")
-        review_file = directory / "review.md"
-        if review is None:
-            if review_file.exists():
-                review_file.unlink()
-        else:
-            lines = ["---", *(f"{key}: {value}" for key, value in review.items()), "---", "# Review", ""]
-            review_file.write_text("\n".join(lines), encoding="utf-8")
+        write_review(directory, review)
         exclude_file = self.path / ".git" / "info" / "exclude"
         if exclude and (not exclude_file.exists() or ".ai/" not in exclude_file.read_text(encoding="utf-8")):
             self.exclude(".ai/")
         return directory
 
-    def hook_state(self) -> Dict[str, Any]:
-        path = self.path / ".ai" / SLUG / ".hooks.json"
-        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    def cleanup(self) -> None:
+        remove_tree(self.base)
 
-    def set_hook_state(self, **values: Any) -> None:
-        path = self.path / ".ai" / SLUG / ".hooks.json"
-        data = self.hook_state()
-        data.update(values)
-        path.write_text(json.dumps(data), encoding="utf-8")
 
-    def state(self) -> Dict[str, Any]:
-        return json.loads((self.path / ".ai" / SLUG / "state.json").read_text(encoding="utf-8"))
+class TempWorkspace(WorkflowFolder):
+    """A multi-repository workspace: ``.ai/`` in a folder that holds several work repositories.
 
-    def log_entries(self) -> List[Dict[str, Any]]:
-        path = self.path / ".ai" / SLUG / "log.jsonl"
-        if not path.exists():
-            return []
-        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    Each repository is on ``main`` with one commit, pushed to its own local bare origin
+    (``<base>/<name>-origin.git``).
+    """
+
+    def __init__(self, names: Tuple[str, ...] = ("api", "web")) -> None:
+        self.base = Path(tempfile.mkdtemp(prefix="aidw-ws-"))
+        self.env = isolated_env(self.base)
+        self.path = self.base / "workspace"
+        self.path.mkdir()
+        for name in names:
+            self.add_repository(name)
+
+    def run_git(self, cwd: Path, *args: str) -> str:
+        proc = subprocess.run(
+            ["git", *args], cwd=str(cwd), env=self.env, capture_output=True, text=True, encoding="utf-8"
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(f"git {' '.join(args)} failed: {proc.stderr}")
+        return proc.stdout.strip()
+
+    def add_repository(self, name: str) -> Path:
+        folder = self.path / name
+        folder.mkdir(parents=True)
+        self.run_git(folder, "init", "-b", "main")
+        self.commit_file(name, "README.md", f"# {name}\n", "chore: init")
+        origin = self.base / f"{name.replace('/', '-')}-origin.git"
+        self.run_git(self.base, "init", "--bare", "-b", "main", str(origin))
+        self.git(name, "remote", "add", "origin", str(origin))
+        self.git(name, "push", "-u", "origin", "main")
+        return folder
+
+    def git(self, name: str, *args: str) -> str:
+        return self.run_git(self.path / name, *args)
+
+    def write(self, name: str, relative: str, content: str) -> Path:
+        target = self.path / name / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+        return target
+
+    def commit_file(self, name: str, relative: str, content: str, message: str) -> str:
+        self.write(name, relative, content)
+        self.git(name, "add", relative)
+        self.git(name, "commit", "-m", message)
+        return self.head(name)
+
+    def head(self, name: str) -> str:
+        return self.git(name, "rev-parse", "HEAD")
+
+    def write_workflow(
+        self,
+        phase: str = "build",
+        review: Optional[Dict[str, str]] = None,
+        base_branch: Optional[str] = "main",
+        repositories: Any = ("api", "web"),
+        **state_overrides: Any,
+    ) -> Path:
+        directory = self.path / ".ai" / SLUG
+        directory.mkdir(parents=True, exist_ok=True)
+        (self.path / ".ai" / "current").write_text(SLUG + "\n", encoding="utf-8")
+        state = base_state(phase, base_branch)
+        if repositories:
+            state["repositories"] = [entry if isinstance(entry, dict) else {"path": entry} for entry in repositories]
+        state.update(state_overrides)
+        (directory / "state.json").write_text(json.dumps(state, indent=2), encoding="utf-8")
+        write_review(directory, review)
+        return directory
 
     def cleanup(self) -> None:
         remove_tree(self.base)

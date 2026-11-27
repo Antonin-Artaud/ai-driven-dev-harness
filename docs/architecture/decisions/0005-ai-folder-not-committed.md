@@ -14,6 +14,8 @@ The workflow produces working files (brief, plan, review, state, PR description,
 ## Decision
 All working files live in `.ai/` at the repository root, excluded through `.git/info/exclude` (never the team's `.gitignore`). The brief and the plan survive the PR as the "🤖 Workflow record" thread on the draft PR. Closed workflows are kept locally under `.ai/archive/` (close step).
 
+Amended by [ADR 0011](./0011-workflow-root-above-the-repositories.md): in a multi-repository project, `.ai/` may sit in the folder that holds the repositories, outside all of them; when that folder is itself inside a git repository, `.ai/` is excluded there.
+
 ## Consequences
 - No workflow noise in the history or the diff; the review gate ignores `.ai/`.
 - The record on the PR is the durable trace; local archives can be deleted freely.

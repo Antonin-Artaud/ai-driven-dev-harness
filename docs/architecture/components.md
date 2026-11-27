@@ -1,6 +1,6 @@
 ---
 title: Components
-verified_on: 2026-11-26
+verified_on: 2026-11-27
 sources:
   - com.github.copilot/agents/
   - skills/
@@ -54,7 +54,7 @@ flowchart LR
 | `code-review` | Independent review of `merge-base..HEAD`, severities, `review.md` | `skills/code-review/` |
 | `pr-feedback` | Triage of PR comments (fix, discuss, decline), fixes, `🤖` replies | `skills/pr-feedback/` |
 | `azure-devops` | Use of the MCP servers: work item intake, draft PR creation, comments | `skills/azure-devops/` |
-| `project-onboarding` | Onboarding of a target project and the `onboard.py` script (Azure DevOps MCP servers, `.git/info/exclude`, mutation testing tool per stack) | `skills/project-onboarding/` |
+| `project-onboarding` | Onboarding of a target project and the `onboard.py` script (Azure DevOps MCP servers, `.git/info/exclude`, mutation testing tool per stack, `--workspace` for a multi-repository project) | `skills/project-onboarding/` |
 | `ui-ux-design` | UI lots: design system first, WCAG 2.1 AA, states, responsive, i18n, visual evidence | `skills/ui-ux-design/` |
 | `security-design` | Threat model (STRIDE), `SEC-n` requirements per lot, `security.md`; security checklist | `skills/security-design/` |
 | `performance-design` | Budgets, hot paths, measurement plan, `PERF-n` requirements per lot, `performance.md`; performance checklist | `skills/performance-design/` |
@@ -69,10 +69,10 @@ Precedence rule: the target project's skills win over the plugin's, and the plug
 
 | Module | Responsibility | Source |
 |---|---|---|
-| `workflow_gate.py` | Shared library: input parsing (VS Code Local and Copilot formats), workflow loading without git, git calls, `review.md` front matter, review gate, hook-owned state, heartbeat, decision log and redaction, Azure DevOps coordinates of `origin`, output format | `scripts/hooks/workflow_gate.py` |
-| `state_policy.py` | File edits: simulation of the edit, `state.json` transitions, `review.md` ownership and iteration, hook-owned files, role boundaries | `scripts/hooks/state_policy.py` |
-| `pre_tool_use.py` | `PreToolUse` entry point: shell commands (git push, test-first gate on commits, az, HTTP, wrappers, launchers, interpreters), Azure DevOps MCP tools, then `state_policy` for file edits | `scripts/hooks/pre_tool_use.py` |
-| `stop.py` | Review gate (`build`, `feedback`) and record gate (`pr-open`), consecutive block count | `scripts/hooks/stop.py` |
+| `workflow_gate.py` | Shared library: input parsing (VS Code Local and Copilot formats), workflow root and workflow loading without git (repository root or the workspace above it, [ADR 0011](./decisions/0011-workflow-root-above-the-repositories.md)), the workflow's repositories (`Repository`, `RepoStatus`), git calls, `review.md` front matter, review gate, hook-owned state, heartbeat, decision log and redaction, Azure DevOps coordinates of `origin`, output format | `scripts/hooks/workflow_gate.py` |
+| `state_policy.py` | File edits: simulation of the edit, `state.json` transitions (including the `repositories` rules), `review.md` ownership and iteration, hook-owned files, role boundaries | `scripts/hooks/state_policy.py` |
+| `pre_tool_use.py` | `PreToolUse` entry point: shell commands (git push, test-first gate on commits, each in the repository the command runs in, followed through `cd` and `git -C`; az, HTTP, wrappers, launchers, interpreters), Azure DevOps MCP tools (draft PR mapped to its repository), then `state_policy` for file edits | `scripts/hooks/pre_tool_use.py` |
+| `stop.py` | Review gate (`build`, `feedback`) and record gate (`pr-open`) over every repository of the workflow, consecutive block count | `scripts/hooks/stop.py` |
 | `user_prompt.py` | `UserPromptSubmit`: time of the user's last prompt, heartbeat | `scripts/hooks/user_prompt.py` |
 | `subagent.py` | `SubagentStart` / `SubagentStop`: subagent markers, usage attribution | `scripts/hooks/subagent.py` |
 | `usage.py` | Token usage per agent read from the session transcript (`usage.json`), pricing (`pricing.json`), cost table | `scripts/hooks/usage.py` |

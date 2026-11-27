@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Stop hook of the ai-driven-dev-harness plugin: the review gate and the record gate.
 
-In the ``build`` and ``feedback`` phases, the main agent cannot finish its turn while the work
-branch has uncommitted changes, or commits that are not covered by an APPROVED ``review.md``.
-In the ``pr-open`` phase, it cannot finish before the brief and the plan are archived on the draft
-PR (``record_thread`` in ``state.json``).
+In the ``build`` and ``feedback`` phases, the main agent cannot finish its turn while a work
+branch has uncommitted changes, or commits that are not covered by an APPROVED ``review.md``
+(every repository of a multi-repository workflow). In the ``pr-open`` phase, it cannot finish
+before the brief and the plan are archived on each draft PR (``record_thread`` in ``state.json``).
 
 Consecutive blocks are counted in ``.ai/<slug>/.hooks.json`` (``stop_blocks``): the hook blocks at
 most ``MAX_STOP_BLOCKS`` times in a row, then lets the stop through and logs it, so the agent can
@@ -34,14 +34,12 @@ def gate(workflow: wg.Workflow) -> Blocked:
         return ("Record gate", reason) if reason else None
     if workflow.phase not in wg.STOP_GATED_PHASES:
         return None
-    head = wg.head_sha(workflow.root)
-    dirty = wg.workflow_dirty_paths(workflow)
-    if not head or dirty is None:
+    statuses = wg.workflow_status(workflow, with_merge_base=True)
+    if any(not status.head or status.dirty is None for status in statuses):
         return None
-    base_branch = workflow.base_branch
-    if not dirty and base_branch and wg.merge_base(workflow.root, base_branch) == head:
-        return None  # nothing implemented on the work branch yet
-    reason = wg.review_gate(workflow, head=head, dirty=dirty)
+    if all(not status.dirty and status.merge_base and status.merge_base == status.head for status in statuses):
+        return None  # nothing implemented on any work branch yet
+    reason = wg.review_gate(workflow, statuses)
     return ("Review gate", reason) if reason else None
 
 
@@ -75,13 +73,22 @@ def evaluate(hook: wg.HookInput) -> Blocked:
 
 
 def record_gate(workflow: wg.Workflow) -> Optional[str]:
-    """Once the draft PR exists, the brief and the plan must be archived on it."""
-    pull_request = workflow.state.get("pull_request")
-    if not pull_request or workflow.state.get("record_thread"):
+    """Once a draft PR exists, the brief and the plan must be archived on it."""
+    missing = [
+        repository for repository in workflow.repositories if repository.pull_request and not repository.record_thread
+    ]
+    if not missing:
         return None
+    if not workflow.multi_repo:
+        return (
+            f"draft PR {missing[0].pull_request} has no workflow record yet. Post brief.md and plan.md as the "
+            f'"{wg.AI_MARKER} Workflow record" thread (azure-devops skill), then set "record_thread" in state.json.'
+        )
+    shown = ", ".join(f"{repository.pull_request} ({repository.path})" for repository in missing)
     return (
-        f"draft PR {pull_request} has no workflow record yet. Post brief.md and plan.md as the "
-        f'"{wg.AI_MARKER} Workflow record" thread (azure-devops skill), then set "record_thread" in state.json.'
+        f"draft PR {shown} has no workflow record yet. Post brief.md and plan.md as the "
+        f'"{wg.AI_MARKER} Workflow record" thread on each PR (azure-devops skill), then set its "record_thread" '
+        f"in {wg.REPOSITORIES_FIELD}."
     )
 
 

@@ -19,3 +19,11 @@ argument-hint: 'Optional: base branch name, architecture docs folder'
    - VS Code settings: `chat.plugins.enabled`, `chat.pluginLocations` (path of this plugin), `chat.useHooks`; the workspace must be trusted.
    - Python on the PATH as `python` (Windows) or `python3` (Linux, macOS), for the hooks.
    - MCP: start `ado-read` and `ado-write` from the MCP servers view (Microsoft Entra sign-in), then list the project's repositories with an `ado-read` tool.
+
+## Multi-repository projects
+
+When the project spans several git repositories, the workflow folder `.ai/` may sit in the folder that holds them, the **workspace**, one level above each repository (`delivery-workflow` skill). Onboard it that way when the user opens VS Code on that folder and a change usually touches several of its repositories:
+
+1. Run the script for **each repository** with `--workspace <folder>` (`python <path>/onboard.py --repo <folder>/api --workspace <folder>`, `--dry-run` first). Each repository gets its own `.ai/` exclusion, mutation tool exclusions and Azure DevOps coordinates; `.vscode/mcp.json` is written once, in the workspace. When the workspace is itself inside a git repository, the script also excludes `.ai/` (and a new, untracked `mcp.json`) from that repository (`workspace_git_exclude`). Each repository must sit directly in the workspace: the hooks look for `.ai/` one level above a repository, never higher.
+2. Write the project contract in the **workspace `AGENTS.md`**, with a `Repositories` table (folder, Azure Repos repository, base branch, build and test commands) instead of the single `Repository` part; each repository may keep its own `AGENTS.md` for its commands. Agents read the workspace contract first.
+3. Commit the onboarding in each repository as in step 7. A workspace that is not a git repository keeps its `AGENTS.md` and `mcp.json` locally: tell the user to back them up or keep them in a repository of their own.

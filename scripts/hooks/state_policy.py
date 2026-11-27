@@ -9,6 +9,8 @@ Covers every file edit tool call while a workflow is active:
 * Hook-owned files (``.hooks.json``, ``log.jsonl``, subagent markers) are never written by agents.
 * Role boundaries: the reviewer writes only ``review.md``; the implementer never writes under
   ``.ai/``; the main agent (challenger, architect, builder) is asked before writing outside ``.ai/``.
+* ``repositories`` (multi-repository workflow, ADR 0011): valid relative folders, fixed once the
+  build starts, git repositories when it starts, each with its own write-once PR and record thread.
 """
 
 from __future__ import annotations
@@ -49,6 +51,8 @@ TRANSITIONS: Dict[str, frozenset] = {
 CYCLE_START = {("design", "build"), ("escalated", "build"), ("triage", "feedback"), ("escalated", "feedback")}
 VALIDATIONS = {"brief_validated": "brief.md", "plan_validated": "plan.md"}
 WRITE_ONCE = ("pull_request", "record_thread")
+# Phases in which the repositories, the base branch and their layout may still change.
+BEFORE_BUILD = ("challenge", "design", "escalated")
 
 
 def deny(reason: str) -> Decision:
@@ -294,7 +298,10 @@ def check_state_write(
     if phase not in wg.PHASES:
         return deny(f"unknown phase '{phase}'. Phases: {', '.join(wg.PHASES)}.")
     if old is None:
-        return NO_DECISION if phase == "challenge" else deny("a new workflow starts in the 'challenge' phase.")
+        if phase != "challenge":
+            return deny("a new workflow starts in the 'challenge' phase.")
+        problem = repositories_problem(new.get(wg.REPOSITORIES_FIELD))
+        return deny(problem) if problem else NO_DECISION
     if phase == "done" and old_phase != "done":
         return deny(
             "only the close step sets 'done' (close_workflow.py, delivery-workflow skill): it archives the "
@@ -304,17 +311,11 @@ def check_state_write(
     for key in WRITE_ONCE:
         if old.get(key) not in (None, "") and new.get(key) != old.get(key):
             return deny(f"'{key}' is set once and never changed.")
-    if (
-        old.get("base_branch")
-        and new.get("base_branch") != old.get("base_branch")
-        and old_phase
-        not in (
-            "challenge",
-            "design",
-            "escalated",
-        )
-    ):
+    if old.get("base_branch") and new.get("base_branch") != old.get("base_branch") and old_phase not in BEFORE_BUILD:
         return deny("base_branch only changes before the build starts.")
+    blocked = check_repositories(workflow, old, new, old_phase)
+    if blocked:
+        return deny(blocked)
 
     # validations of brief.md and plan.md
     now = time.time()
@@ -394,16 +395,25 @@ def check_state_write(
         return deny(f"design gate: {blocked}") if blocked else NO_DECISION
     if phase == "build":
         blocked = _validation_gate(target, new, hook_state, ("brief_validated", "plan_validated"))
+        blocked = blocked or _repositories_gate(target)
         if blocked:
             return deny(f"build gate: {blocked}")
         if old_phase == "design":
-            baseline = wg.untracked_paths(workflow.root) or []
+            baseline = [
+                repository.prefix + path
+                for repository in target.repositories
+                for path in wg.untracked_paths(repository.root) or []
+            ]
             effects.add(lambda data: data.__setitem__("untracked_baseline", baseline))
         return NO_DECISION
     if phase == "pr-open" and old_phase in ("build", "feedback", "escalated"):
-        if not new.get("pull_request"):
-            return deny("pr-open needs the draft PR id in 'pull_request'.")
-        blocked = wg.review_gate(target)
+        if not target.multi_repo:
+            if not new.get("pull_request"):
+                return deny("pr-open needs the draft PR id in 'pull_request'.")
+            blocked = wg.review_gate(target)
+        else:
+            statuses = wg.workflow_status(target, with_merge_base=True)
+            blocked = _pull_requests_gate(target, statuses) or wg.review_gate(target, statuses)
         return deny(f"pr-open gate: {blocked}") if blocked else NO_DECISION
     if phase == "feedback" and old_phase == "triage":
         if not (workflow.directory / "feedback.md").is_file():
@@ -412,6 +422,98 @@ def check_state_write(
         if not _user_spoke_after(hook_state, written):
             return deny("the triage in feedback.md is not validated: show it to the user and wait for their answer.")
     return NO_DECISION
+
+
+def repositories_problem(value: Any) -> Optional[str]:
+    """Why ``state.repositories`` is malformed, or None (absent, empty, or valid entries)."""
+    if value is None or value == []:
+        return None
+    if not isinstance(value, list):
+        return (
+            f"'{wg.REPOSITORIES_FIELD}' must be a list of repository folders relative to the workflow root, "
+            'or of objects with a "path" (delivery-workflow skill).'
+        )
+    seen = set()
+    for entry in value:
+        data = entry if isinstance(entry, dict) else {"path": entry}
+        path = wg.normalize_repository_path(data.get("path"))
+        if path is None:
+            return (
+                f"repository {data.get('path')!r} must be a folder inside the workflow root (relative path, "
+                f"no '..', not {wg.WORKFLOW_DIR}/)."
+            )
+        if "/" in path:
+            return (
+                f"repository '{path}' must sit directly in the workflow root: the hooks look for "
+                f"{wg.WORKFLOW_DIR}/ one level above a repository, never higher."
+            )
+        if path.casefold() in seen:
+            return f"repository '{path}' is listed twice."
+        seen.add(path.casefold())
+        base = data.get("base_branch")
+        if base is not None and not (isinstance(base, str) and base.strip()):
+            return f"the base_branch of repository '{path}' must be a branch name."
+    return None
+
+
+def _layout(workflow: wg.Workflow) -> List[Tuple[str, Optional[str]]]:
+    return [(repository.path.casefold(), repository.base_branch) for repository in workflow.listed_repositories]
+
+
+def check_repositories(
+    workflow: wg.Workflow, old: Dict[str, Any], new: Dict[str, Any], old_phase: Optional[str]
+) -> Optional[str]:
+    """``repositories``: well formed, fixed once the build starts, PR and record thread set once per repository."""
+    problem = repositories_problem(new.get(wg.REPOSITORIES_FIELD))
+    if problem:
+        return problem
+    before = wg.Workflow(workflow.root, workflow.slug, workflow.directory, old, workflow.review)
+    after = wg.Workflow(workflow.root, workflow.slug, workflow.directory, new, workflow.review)
+    if _layout(before) != _layout(after) and old_phase not in BEFORE_BUILD:
+        return f"'{wg.REPOSITORIES_FIELD}' (folders and base branches) only changes before the build starts."
+    if after.multi_repo and any(new.get(key) not in (None, "") for key in WRITE_ONCE):
+        return (
+            "a multi-repository workflow records each draft PR and its record thread on its repository "
+            f'(\'{wg.REPOSITORIES_FIELD}\': [{{"path": ..., "pull_request": ..., "record_thread": ...}}]), '
+            "not at the top level."
+        )
+    current = {repository.path.casefold(): repository for repository in after.listed_repositories}
+    for previous in before.listed_repositories:
+        now = current.get(previous.path.casefold())
+        for key in WRITE_ONCE:
+            value = getattr(previous, key)
+            if value is not None and (now is None or getattr(now, key) != value):
+                return f"'{key}' of repository '{previous.path}' is set once and never changed."
+    return None
+
+
+def _repositories_gate(workflow: wg.Workflow) -> Optional[str]:
+    """Every repository of the workflow is the root of a git repository when the build starts."""
+    for repository in workflow.repositories:
+        found = wg.find_repo_root(repository.root)
+        if found is not None and wg.path_key(found) == wg.path_key(repository.root):
+            continue
+        if not workflow.multi_repo:
+            return (
+                f"the workflow root {workflow.root} is not a git repository. When {wg.WORKFLOW_DIR}/ sits in the "
+                f"folder that holds several repositories, list the ones the workflow changes in "
+                f"'{wg.REPOSITORIES_FIELD}' (delivery-workflow skill)."
+            )
+        return f"repository '{repository.path}' is not the root of a git repository ({repository.root})."
+    return None
+
+
+def _pull_requests_gate(workflow: wg.Workflow, statuses: List[wg.RepoStatus]) -> Optional[str]:
+    """pr-open of a multi-repository workflow: a draft PR for every repository with changes."""
+    if not workflow.pull_requests():
+        return f"pr-open needs the draft PR id in the 'pull_request' of its repository ('{wg.REPOSITORIES_FIELD}')."
+    missing = [status.repository.path for status in statuses if status.changed and not status.repository.pull_request]
+    if missing:
+        return (
+            f"every repository with changes needs its draft PR: {', '.join(missing)} has no 'pull_request' "
+            f"in '{wg.REPOSITORIES_FIELD}'."
+        )
+    return None
 
 
 def check_review_write(workflow: wg.Workflow, new_text: Optional[str]) -> Decision:

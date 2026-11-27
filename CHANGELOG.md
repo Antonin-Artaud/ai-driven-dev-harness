@@ -2,6 +2,20 @@
 
 All notable changes of the `ai-driven-dev-harness` plugin. Versions follow [semantic versioning](https://semver.org/); the version lives in `plugin.json`.
 
+## 0.7.0 — unreleased — multi-repository projects
+
+Design: [ADR 0011](docs/architecture/decisions/0011-workflow-root-above-the-repositories.md).
+
+### Added
+- **`.ai/` one level above the repositories.** For a project that spans several git repositories, `.ai/` may sit in the folder that holds them (the workspace opened in VS Code). The hooks, `close_workflow.py` and `usage_report.py` look for `.ai/current` from the working folder up to the folder that holds its repository, never higher (`find_workflow_root`); a repository's own `.ai/current` still wins.
+- `state.json` `repositories`: the folders of the repositories the workflow changes, each with an optional `base_branch` and its own write-once `pull_request` and `record_thread`. Folders sit directly in the workflow root, must be git repositories when the build starts, and are fixed from then on. Unlisted repositories of the workspace are not governed. Empty for a single repository, which behaves as before.
+- Per-repository gates: the work branch `ai/<slug>` in each repository; push and test-first commit rules checked in the repository the command runs in (`cd`, `pushd`, `popd`, `Set-Location`, `git -C` and aliases followed; a command whose repository cannot be told asks); untracked baseline per repository; the decision log records the HEAD of each repository.
+- One review for all the repositories: `reviewed_sha: api=<sha> web=<sha>` names the HEAD of each repository with changes; the Stop review gate, the `pr-open` gate and the draft PR gate check every repository.
+- One draft PR per repository with changes: `repositoryId` is matched to a listed repository by its Azure Repos name, the checks (branch, base branch, push, existing PR) apply to that repository, `pr-open` needs a PR for every repository with changes, and the record gate a record thread on each PR. PR updates and comments are scoped to the workflow's PRs.
+- `onboard.py --workspace <folder>`: `.vscode/mcp.json` in the workspace, `.ai/` excluded in each repository, and in the repository that holds the workspace when there is one (`workspace_git_exclude`).
+- Skills and templates: multi-repository sections in delivery-workflow, the gates reference, plan-execution, azure-devops, code-review, pr-feedback, solution-design (`Repository:` per lot), business-challenge and project-onboarding (workspace `AGENTS.md` with a `Repositories` table); `repositories` in the state template.
+- Tests: `tests/test_multi_repo.py` (workspace with real repositories and bare origins).
+
 ## 0.6.0 — unreleased — mutation testing
 
 Design: [ADR 0010](docs/architecture/decisions/0010-mutation-testing-of-changed-code.md).

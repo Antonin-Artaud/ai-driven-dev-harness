@@ -10,7 +10,7 @@ Goal: make sure the team builds the right thing, for the right reason, with test
 
 ## Procedure
 
-1. **Set up the workflow folder.** Choose the slug (kebab-case, at most 40 characters, `delivery-workflow` skill), write `.ai/current` and create `.ai/<slug>/state.json` from the state template of the `delivery-workflow` skill, with `phase: challenge` and the `base_branch` of the project contract. If `.ai/current` already points to another active slug, ask the user whether to resume it, or to close it first (close step of the `delivery-workflow` skill); the hooks refuse to switch away from a workflow in `build`, `pr-open`, `triage` or `feedback`.
+1. **Set up the workflow folder.** Choose the slug (kebab-case, at most 40 characters, `delivery-workflow` skill), write `.ai/current` and create `.ai/<slug>/state.json` from the state template of the `delivery-workflow` skill, with `phase: challenge` and the `base_branch` of the project contract. When the workflow root is a workspace that holds several repositories (the project contract lists them), fill `repositories` with the ones the need is likely to change, each with its base branch when it differs (multi-repository projects, `delivery-workflow` skill); with a single repository, leave it empty. If `.ai/current` already points to another active slug, ask the user whether to resume it, or to close it first (close step of the `delivery-workflow` skill); the hooks refuse to switch away from a workflow in `build`, `pr-open`, `triage` or `feedback`.
 2. **Intake.**
    - Free text or a spec file: read it entirely.
    - Azure DevOps work item (ID or URL): follow the intake section of the `azure-devops` skill and record the ID in `state.work_item`.

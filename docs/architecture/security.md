@@ -1,6 +1,6 @@
 ---
 title: Security
-verified_on: 2026-11-13
+verified_on: 2026-11-27
 sources:
   - scripts/hooks/
   - scripts/close_workflow.py
@@ -75,3 +75,4 @@ Still open:
 - **Mutation gate.** No hook checks the mutation score ([ADR 0010](./decisions/0010-mutation-testing-of-changed-code.md)): the reviewer reruns the tool and turns a score below the threshold into a finding. `mutation_gate.py` refuses a mutation-testing-elements report older than the code, but cannot date a PIT report or a tool's console output.
 - **Azure DevOps Server (on-premises)**: whether the remote MCP server can serve it is **To confirm**; `onboard.py` generates no MCP configuration for such remotes.
 - **Pushes to another remote** (`git push https://other/repo ai/<slug>`) are only checked for the branch name.
+- **Multi-repository workspaces** ([ADR 0011](./decisions/0011-workflow-root-above-the-repositories.md)). The hooks follow `cd`, `pushd`, `popd`, `Set-Location` and `git -C` within one command line to know which repository a git command runs in; they do not know the folder an earlier terminal call left the shell in, nor a `cd` inside a subshell, a block or a pipe. In those cases a `git push` or a gated `git commit` asks the user instead of being checked against its repository (force and other destinations are still denied). A repository of the workspace that `state.repositories` does not list is not governed, and `.ai/` is only looked for one level above a repository: a `.ai/` higher up governs nothing from inside the repository.

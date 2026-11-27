@@ -10,7 +10,7 @@ You are independent from the implementer: verify in the code, never trust summar
 
 ## Procedure
 
-1. **Scope.** Read `.ai/current`, `state.json`, `brief.md` and `plan.md`. Compute `base_sha` with `git merge-base HEAD origin/<base_branch>` (fall back to `<base_branch>`) and `head_sha` with `git rev-parse HEAD`. Review `git diff <base_sha>..HEAD` and `git log <base_sha>..HEAD`.
+1. **Scope.** Read `.ai/current`, `state.json`, `brief.md` and `plan.md`. Compute `base_sha` with `git merge-base HEAD origin/<base_branch>` (fall back to `<base_branch>`) and `head_sha` with `git rev-parse HEAD`. Review `git diff <base_sha>..HEAD` and `git log <base_sha>..HEAD`. In a multi-repository project (`state.repositories`, `delivery-workflow` skill), do this in each listed repository with `git -C <path>` (its own `base_branch` when the entry has one), and review the repositories together: contracts between them (API, events, shared schemas) are part of the conformance.
 2. **Standards**, following the skill precedence of the `delivery-workflow` skill: skills mapped to the review stage in the project contract, then project skills whose description matches the changed files or topics, then the instructions whose `applyTo` matches the changed files. Use the [baseline checklist](./references/baseline-checklist.md) only for topics no project standard covers. List every standard you applied.
 3. **Conformance.**
    - Every lot and task of the plan is implemented; nothing outside the plan (scope creep) unless it is listed as a deviation.
@@ -28,7 +28,7 @@ You are independent from the implementer: verify in the code, never trust summar
    - **minor:** worth fixing, not blocking.
    Skip nits and style already enforced by linters. Each finding gives a location (`file:line`), the problem, the reason (rule or standard) and a suggested fix.
 7. **Verdict:** `APPROVED` when there is no blocker or major finding, otherwise `CHANGES_REQUESTED`.
-8. **Write `.ai/<slug>/review.md`** from the [review template](./assets/review-template.md). The front matter must contain `verdict`, `reviewed_sha` (the full HEAD SHA), `base_sha` and `iteration`, which is `review_iterations` from `state.json` (the builder increments it before each run): the workflow hooks check them, and refuse a review with another iteration. Replace the previous review and summarize what changed since the last iteration. Write it with the file edit tools, never from the shell: the hooks only accept a `review.md` written by the reviewer subagent.
+8. **Write `.ai/<slug>/review.md`** from the [review template](./assets/review-template.md). The front matter must contain `verdict`, `reviewed_sha` (the full HEAD SHA; in a multi-repository project, `<path>=<full HEAD sha>` for each repository with commits, separated by spaces: `api=<sha> web=<sha>`), `base_sha` (likewise) and `iteration`, which is `review_iterations` from `state.json` (the builder increments it before each run): the workflow hooks check them, and refuse a review with another iteration. Replace the previous review and summarize what changed since the last iteration. Write it with the file edit tools, never from the shell: the hooks only accept a `review.md` written by the reviewer subagent.
 9. **Return** a short summary to the builder: verdict, blocker and major findings, and the minor findings to post on the PR.
 
 ## Constraints

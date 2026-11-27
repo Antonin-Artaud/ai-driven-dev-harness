@@ -1,6 +1,6 @@
 ---
 title: Data
-verified_on: 2026-11-13
+verified_on: 2026-11-27
 sources:
   - skills/delivery-workflow/
   - scripts/hooks/workflow_gate.py
@@ -11,23 +11,23 @@ sources:
 ---
 # Data
 
-The plugin has no database. Its state lives in files of the target project.
+The plugin has no database. Its state lives in files of the target project, under `.ai/` in the **workflow root**: the repository root, or the workspace folder that holds the repositories of a multi-repository project, found by `find_workflow_root` in `scripts/hooks/workflow_gate.py` ([ADR 0011](./decisions/0011-workflow-root-above-the-repositories.md)).
 
 ## Stores
 
 | Store | Content | Committed | Written by | Source |
 |---|---|---|---|---|
-| `.ai/current` | Slug of the active work | no (`.git/info/exclude`) | challenger, close step | `skills/delivery-workflow/SKILL.md` |
+| `.ai/current` | Slug of the active work | no (`.git/info/exclude` of each repository, and of the repository holding the workspace if any) | challenger, close step | `skills/delivery-workflow/SKILL.md` |
 | `.ai/<slug>/state.json` | Workflow state; every edit is checked by the hooks | no | the agent of the current stage | `skills/delivery-workflow/assets/state-template.json`, `scripts/hooks/state_policy.py` |
 | `.ai/<slug>/brief.md`, `plan.md`, `pr-description.md`, `feedback.md` | Artifacts of each stage | no | challenger, architect, builder | `skills/delivery-workflow/SKILL.md` |
 | `.ai/<slug>/security.md`, `performance.md` | Specialist analyses and their `SEC-n`, `PERF-n` requirements | no | security-architect, performance-architect | `skills/security-design/`, `skills/performance-design/` |
 | `.ai/<slug>/review.md` | Latest review; its front matter is read by the hooks | no | reviewer | `skills/code-review/SKILL.md` |
-| `.ai/<slug>/.hooks.json` | Heartbeat (time, plugin version), `user_prompt_at`, `written_at` and `validated_at` per artifact, `escalated_at`, `untracked_baseline`, `stop_blocks` | no | hooks only | `scripts/hooks/workflow_gate.py`, `state_policy.py`, `user_prompt.py`, `stop.py` |
-| `.ai/<slug>/log.jsonl` | One JSON line per hook decision: `at`, `hook`, `tool`, `decision`, `reason`, `head`, `phase` | no | hooks only (append-only) | `log_event` in `scripts/hooks/workflow_gate.py` |
+| `.ai/<slug>/.hooks.json` | Heartbeat (time, plugin version), `user_prompt_at`, `written_at` and `validated_at` per artifact, `escalated_at`, `untracked_baseline` (paths relative to the workflow root: `api/notes.txt`), `stop_blocks` | no | hooks only | `scripts/hooks/workflow_gate.py`, `state_policy.py`, `user_prompt.py`, `stop.py` |
+| `.ai/<slug>/log.jsonl` | One JSON line per hook decision: `at`, `hook`, `tool`, `decision`, `reason`, `head` (`{path: sha}` in a multi-repository workflow), `phase` | no | hooks only (append-only) | `log_event` in `scripts/hooks/workflow_gate.py` |
 | `.ai/<slug>/usage.json` | Token usage per agent (schema below) | no | hooks only (`Stop`, `SubagentStart`, `SubagentStop`) | `scripts/hooks/usage.py` |
 | `.ai/<slug>/.<subagent>-active` | Subagent markers (reviewer, implementer, ui-ux-designer, security-architect, performance-architect) | no | hooks only | `scripts/hooks/subagent.py` |
 | `.ai/archive/<slug>/` | Closed workflows | no | close step | `scripts/close_workflow.py` |
-| `.vscode/mcp.json` | `ado-read` and `ado-write` declarations | excluded when created by the script and untracked | `onboard.py` | `skills/project-onboarding/scripts/onboard.py` |
+| `.vscode/mcp.json` | `ado-read` and `ado-write` declarations, in the repository or the workspace (`--workspace`) | excluded when created by the script and untracked | `onboard.py` | `skills/project-onboarding/scripts/onboard.py` |
 | `docs/architecture/` | Architecture map | yes | architecture-mapping, implementer | `skills/architecture-mapping/SKILL.md` |
 | `AGENTS.md` (AI delivery workflow section) | Project contract | yes | project-onboarding | `skills/project-onboarding/assets/agents-md-section.md` |
 
@@ -41,8 +41,9 @@ The plugin has no database. Its state lives in files of the target project.
 | `base_branch`, `branch` | target branch, always `ai/<slug>` | `base_branch`: PR target, fixed once the build starts; `branch`: must be `ai/<slug>` (the hooks never trust it) |
 | `work_item` | ID or `null` | no |
 | `brief_validated`, `plan_validated` | `{"at", "head"}` or `null` | yes: required to enter `design` and `build`, need a user prompt after the last write of the file |
-| `lots_done` | append-only list of `{"lot", "commit"}` | yes: append-only within a cycle |
-| `pull_request`, `record_thread` | ID or `null`, set once | yes: PR and comment writes are scoped to `pull_request`; `record_thread` ends the record gate |
+| `lots_done` | append-only list of `{"lot", "commit"}` (plus `"repository"` in a multi-repository workflow) | yes: append-only within a cycle |
+| `pull_request`, `record_thread` | ID or `null`, set once; empty in a multi-repository workflow | yes: PR and comment writes are scoped to `pull_request`; `record_thread` ends the record gate |
+| `repositories` | `[]`, or the repositories of a multi-repository workflow: folder names or `{"path", "base_branch", "pull_request", "record_thread"}` | yes: folders directly in the workflow root, git repositories when the build starts, layout fixed from then on; each entry's PR and record thread set once and scoped like the top-level ones (`check_repositories` in `state_policy.py`, `Workflow.repositories` in `workflow_gate.py`) |
 | `review_iterations` | 0 to 2 | yes: +1 per reviewer run, reset to 0 when a cycle starts, equal to the `iteration` of `review.md` |
 | `escalation` | `{"from", "reason"}` | yes: required to enter `escalated` |
 | `language` | language of the request | no |
@@ -79,7 +80,7 @@ From `escalated` the user may also send the workflow back to `challenge`, `triag
 
 ## `review.md` front matter
 
-The hooks read `verdict` (`APPROVED` or `CHANGES_REQUESTED`), `reviewed_sha` (must be a prefix of HEAD), `base_sha` and `iteration` (`skills/code-review/SKILL.md`, `read_frontmatter` in `scripts/hooks/workflow_gate.py`). Files are read as UTF-8 with or without BOM, UTF-16 with BOM, or cp1252 (`read_text`).
+The hooks read `verdict` (`APPROVED` or `CHANGES_REQUESTED`), `reviewed_sha` (must be a prefix of HEAD; in a multi-repository workflow, `<path>=<sha>` pairs naming the HEAD of each repository with changes, `reviewed_shas`), `base_sha` and `iteration` (`skills/code-review/SKILL.md`, `read_frontmatter` in `scripts/hooks/workflow_gate.py`). Files are read as UTF-8 with or without BOM, UTF-16 with BOM, or cp1252 (`read_text`).
 
 ## Sensitive data
 

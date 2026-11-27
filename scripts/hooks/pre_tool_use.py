@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """PreToolUse policy of the ai-driven-dev-harness plugin.
 
-Acts only in a git repository with an active workflow (``.ai/current`` present and phase not
-``done``). The rules are listed once, in skills/delivery-workflow/references/gates.md. In short:
+Acts only where a workflow is active (``.ai/current`` present and phase not ``done``), in its
+git repository or, for a multi-repository workflow, in the folder above its repositories. The
+rules are listed once, in skills/delivery-workflow/references/gates.md. In short:
 
 * file edits: state.json transitions, review.md ownership and role boundaries (``state_policy``);
 * shell commands: ``git push`` asks and only targets ``ai/<slug>``; force pushes, deletions, az
   writes and HTTP calls to Azure DevOps are denied; commands the hook cannot resolve ask; in the
   build and feedback phases, a commit that changes code without any test file asks the user
-  (red-green-refactor skill);
+  (red-green-refactor skill). Each git command is checked in the repository it runs in, followed
+  through ``cd``, ``pushd``, ``Set-Location`` and ``git -C``;
 * Azure DevOps MCP tools: known read tools pass, PR and comment writes are checked and scoped to
-  the workflow's PR, every other tool is denied.
+  the workflow's PRs (one per repository in a multi-repository workflow), every other tool is denied.
 
 Prints one JSON object; ``{}`` means no decision (the normal permission flow applies).
 """
@@ -20,7 +22,7 @@ from __future__ import annotations
 import re
 import sys
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -172,6 +174,7 @@ WRAPPERS: Dict[str, Tuple[frozenset, int]] = {
     "@": (frozenset(), 0),
     ".": (frozenset(), 0),
 }
+CURRENT_SHELL_LAUNCHERS = frozenset({"eval", "iex", "invoke-expression"})
 SHELL_LAUNCHERS = frozenset(
     {
         "cmd",
@@ -255,6 +258,11 @@ AZ_WRITE_VERBS = frozenset(
     }
 )
 CLOSE_SCRIPT = "close_workflow.py"
+# Commands that change the folder of the next commands of the same line (POSIX, cmd, PowerShell).
+CHANGE_DIRECTORY = frozenset({"cd", "chdir", "pushd", "popd", "set-location", "sl", "push-location", "pop-location"})
+CHANGE_DIRECTORY_OPTIONS = frozenset({"-path", "-literalpath", "/d", "-l", "-p"})
+# Subshells, pipes, blocks and substitutions: a cd there may not apply to the commands after it.
+SCOPED_CD_RE = re.compile(r"[(){}`]|(?<!\|)\|(?!\|)")
 # git commit: test-first gate (red-green-refactor skill).
 COMMIT_GATED_PHASES = wg.STOP_GATED_PHASES
 COMMIT_OPTIONS_WITH_VALUE = frozenset(
@@ -500,14 +508,51 @@ def is_unresolved(text: str) -> bool:
 
 
 class ShellContext:
-    """State shared by the segments of one command line: variables assigned before use."""
+    """State shared by the segments of one command line: variables assigned before use, current folder."""
 
-    def __init__(self, workflow: wg.Workflow, stages: bool = False) -> None:
+    def __init__(self, workflow: wg.Workflow, stages: bool = False, cwd: Optional[Path] = None) -> None:
         self.workflow = workflow
         self.variables: Dict[str, str] = {}
         self.git_aliases: Dict[str, str] = {}
         # The command line also stages files, so a commit is checked against the working tree.
         self.stages = stages
+        # Folder the next command runs in: the hook's cwd, followed through cd; None once unknown.
+        self.cwd = cwd
+        # Subshells, pipes and blocks: the hook cannot tell which commands a cd applies to.
+        self.scoped_cd = False
+
+    def repository(self, directories: Optional[List[str]] = None) -> Optional[wg.Repository]:
+        """The repository a git command runs in (``git -C <dir>`` relative to the current folder).
+
+        When the folder is unknown or holds no repository, the workflow's only repository (a
+        single-repository workflow behaves as before), else None.
+        """
+        folder = self.cwd
+        for directory in directories or []:
+            if folder is None or is_unresolved(directory):
+                folder = None
+                break
+            path = Path(directory)
+            folder = path if path.is_absolute() else folder / path
+        root = wg.find_repo_root(folder) if folder is not None else None
+        if root is not None:
+            return self.workflow.repository_for(root)
+        return self.workflow.default_repository
+
+    def change_directory(self, name: str, args: List[str]) -> None:
+        """Follow ``cd <dir>``; a folder the hook cannot know (variable, ``-``, ``~``, ``popd``) makes it unknown."""
+        targets = [arg for arg in args if arg.lower() not in CHANGE_DIRECTORY_OPTIONS]
+        target = targets[0] if targets else None
+        if name in ("popd", "pop-location") or target is None or target == "-" or target.startswith("~"):
+            self.cwd = None
+            return
+        path = Path(target)
+        if self.scoped_cd or is_unresolved(target):
+            self.cwd = None
+        elif path.is_absolute():
+            self.cwd = path
+        elif self.cwd is not None:
+            self.cwd = self.cwd / path
 
 
 def evaluate_opaque(text: str, what: str) -> Decision:
@@ -576,12 +621,29 @@ def git_subcommand(args: List[str]) -> Tuple[Optional[str], List[str], Dict[str,
     return None, [], aliases
 
 
-def git_alias(name: str, inline: Dict[str, str], workflow: wg.Workflow) -> Optional[str]:
+def git_directories(args: List[str]) -> List[str]:
+    """The ``-C <dir>`` options before the git subcommand, in order (git applies each relative to the previous)."""
+    directories: List[str] = []
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg in GIT_OPTIONS_WITH_VALUE:
+            if arg == "-C" and index + 1 < len(args):
+                directories.append(args[index + 1])
+            index += 2
+        elif arg.startswith("-"):
+            index += 1
+        else:
+            break
+    return directories
+
+
+def git_alias(name: str, inline: Dict[str, str], folder: Path) -> Optional[str]:
     if name in GIT_BUILTINS:
         return None
     if name in inline:
         return inline[name]
-    return wg.git(workflow.root, "config", "--get", f"alias.{name}")
+    return wg.git(folder, "config", "--get", f"alias.{name}")
 
 
 def push_violation(args: List[str]) -> Optional[str]:
@@ -617,21 +679,24 @@ def push_positionals(args: List[str]) -> List[str]:
     return positionals
 
 
-def push_destination_problem(args: List[str], workflow: wg.Workflow) -> Tuple[Optional[str], bool]:
+def push_destination_problem(
+    args: List[str], workflow: wg.Workflow, repository: Optional[wg.Repository]
+) -> Tuple[Optional[str], bool]:
     """(denial reason, unresolved) for the destinations of a push without forbidden options."""
     branch = workflow.branch
     positionals = push_positionals(args)
     unresolved = any(is_unresolved(arg) for arg in args)
     refspecs = positionals[1:]
+    where = workflow.repository_label(repository) if repository else ""
     if not refspecs:
-        current = wg.current_branch(workflow.root)
-        if current is None:
+        current = wg.current_branch(repository.root) if repository else None
+        if repository is None or current is None:
             return None, True
         if current != branch:
-            return f"the current branch is '{current}'; the workflow only pushes '{branch}'.", False
-        merge = wg.git(workflow.root, "config", "--get", f"branch.{current}.merge")
+            return f"the current branch{where} is '{current}'; the workflow only pushes '{branch}'.", False
+        merge = wg.git(repository.root, "config", "--get", f"branch.{current}.merge")
         if merge and normalize_ref(merge) != branch:
-            return f"'{current}' tracks '{merge}'; the workflow only pushes to '{branch}'.", False
+            return f"'{current}'{where} tracks '{merge}'; the workflow only pushes to '{branch}'.", False
         return None, unresolved
     for refspec in refspecs:
         if is_unresolved(refspec):
@@ -642,7 +707,10 @@ def push_destination_problem(args: List[str], workflow: wg.Workflow) -> Tuple[Op
             return f"refspec '{refspec}' has no destination.", False
         target = destination if colon else source
         if not colon and source == "HEAD":
-            target = wg.current_branch(workflow.root) or "HEAD"
+            if repository is None:
+                unresolved = True
+                continue
+            target = wg.current_branch(repository.root) or "HEAD"
         if target.startswith("refs/") and not target.startswith("refs/heads/"):
             return f"'{refspec}' pushes '{target}'; the workflow only pushes the branch '{branch}'.", False
         if normalize_ref(target) != branch:
@@ -650,20 +718,33 @@ def push_destination_problem(args: List[str], workflow: wg.Workflow) -> Tuple[Op
     return None, unresolved
 
 
-def evaluate_push(args: List[str], workflow: wg.Workflow, resolved: bool = True) -> Decision:
+def evaluate_push(
+    args: List[str], workflow: wg.Workflow, resolved: bool = True, repository: Optional[wg.Repository] = None
+) -> Decision:
+    """``repository``: where the push runs; None when the hooks cannot tell (several repositories)."""
     violation = push_violation(args)
     if violation:
         return deny(
             f"'{violation}' is not allowed: no force push, branch deletion or mirror push in the "
             "delivery workflow. Ask the user to do it manually if it is really needed."
         )
-    problem, unresolved = push_destination_problem(args, workflow)
+    problem, unresolved = push_destination_problem(args, workflow, repository)
     if problem:
         return deny(f"push destination: {problem}")
     shown = " ".join(["git push", *args])
+    if repository is None and unresolved:
+        return (
+            "ask",
+            f"`{shown}` runs in a folder the hooks cannot match to one of the workflow's repositories "
+            "(use `git -C <repository> push` or `cd <repository>` first). Allow it?",
+        )
     if unresolved or not resolved:
         return ("ask", f"`{shown}` cannot be fully resolved by the hooks (variables or substitutions). Allow it?")
-    return ("ask", f"Confirm `{shown}` to {workflow.branch} (workflow '{workflow.slug}', phase '{workflow.phase}').")
+    where = workflow.repository_label(repository) if repository else ""
+    return (
+        "ask",
+        f"Confirm `{shown}` to {workflow.branch}{where} (workflow '{workflow.slug}', phase '{workflow.phase}').",
+    )
 
 
 def is_test_path(path: str) -> bool:
@@ -709,12 +790,14 @@ def parse_commit_args(args: List[str]) -> Tuple[bool, bool, List[str]]:
     return commit_all, amend, pathspecs
 
 
-def commit_paths(args: List[str], workflow: wg.Workflow, stages: bool) -> Optional[List[str]]:
+def commit_paths(
+    args: List[str], workflow: wg.Workflow, stages: bool, repository: wg.Repository
+) -> Optional[List[str]]:
     """Paths the commit will contain (a superset when files are staged by the same command), or None."""
-    root = workflow.root
+    root = repository.root
     commit_all, amend, pathspecs = parse_commit_args(args)
     if stages or commit_all or pathspecs:
-        found = wg.workflow_dirty_paths(workflow)
+        found = wg.repository_dirty_paths(workflow, repository)
     else:
         staged = wg.git(root, "diff", "--cached", "--name-only")
         found = None if staged is None else staged.splitlines()
@@ -727,52 +810,80 @@ def commit_paths(args: List[str], workflow: wg.Workflow, stages: bool) -> Option
     return sorted(path for path in paths if path)
 
 
-def evaluate_commit(args: List[str], workflow: wg.Workflow, stages: bool) -> Decision:
-    """Test-first gate: a build or feedback commit that changes code without any test file asks the user."""
+def evaluate_commit(
+    args: List[str], workflow: wg.Workflow, stages: bool, repository: Optional[wg.Repository] = None
+) -> Decision:
+    """Test-first gate: a build or feedback commit that changes code without any test file asks the user.
+
+    ``repository``: where the commit runs; None when the hooks cannot tell (folder unknown in a
+    multi-repository workflow), which asks too, since the commit cannot be checked.
+    """
     if workflow.phase not in COMMIT_GATED_PHASES:
         return NO_DECISION
-    paths = commit_paths(args, workflow, stages)
+    if repository is None:
+        shown = " ".join(["git commit", *args])
+        return (
+            "ask",
+            f"`{shown}` runs in a folder the hooks cannot match to one of the workflow's repositories, so they "
+            "cannot check that it contains a test file (red-green-refactor skill). Use `git -C <repository> "
+            "commit` or `cd <repository>` first. Allow it?",
+        )
+    paths = commit_paths(args, workflow, stages, repository)
     if not paths or any(is_test_path(path) for path in paths):
         return NO_DECISION
     code = [path for path in paths if is_code_path(path)]
     if not code:
         return NO_DECISION
     shown = ", ".join(code[:5]) + (f" and {len(code) - 5} more" if len(code) > 5 else "")
+    where = workflow.repository_label(repository)
     return (
         "ask",
-        f"This commit changes code ({shown}) without any test file, against the red-green-refactor skill. "
+        f"This commit{where} changes code ({shown}) without any test file, against the red-green-refactor skill. "
         "Allow it only if you accept this lot without tests (for example a legacy project with no test "
         "harness); otherwise deny it and the implementer writes the failing test first.",
     )
 
 
 def evaluate_git(
-    args: List[str], context: ShellContext, depth: int = 0, inherited: Optional[Dict[str, str]] = None
+    args: List[str],
+    context: ShellContext,
+    depth: int = 0,
+    inherited: Optional[Dict[str, str]] = None,
+    directories: Optional[List[str]] = None,
 ) -> Decision:
+    """``directories``: the ``git -C`` options of the command an alias expands from."""
     workflow = context.workflow
     subcommand, sub_args, inline_aliases = git_subcommand(args)
     inline_aliases = {**context.git_aliases, **(inherited or {}), **inline_aliases}
+    directories = [*(directories or []), *git_directories(args)]
     if subcommand is None:
         return NO_DECISION
+    repository = context.repository(directories)
     if is_unresolved(subcommand):
-        return evaluate_unresolved([subcommand, *sub_args], context)
+        return evaluate_unresolved([subcommand, *sub_args], context, repository)
     if subcommand == "config":
         record_git_alias(sub_args, context)
         return NO_DECISION
     if subcommand == "commit":
-        return evaluate_commit(sub_args, workflow, context.stages)
+        return evaluate_commit(sub_args, workflow, context.stages, repository)
     if subcommand != "push":
-        alias = git_alias(subcommand, inline_aliases, workflow)
+        alias = git_alias(subcommand, inline_aliases, repository.root if repository else workflow.root)
         if not alias:
             return NO_DECISION
         if depth >= MAX_ALIAS_DEPTH:
             return ("ask", f"Confirm `git {subcommand}`: the alias is nested too deeply to be checked.")
         rest = " ".join(sub_args)
         if alias.startswith("!"):
-            return evaluate_command(f"{alias[1:]} {rest}", context, depth + 1)
+            # git runs shell aliases from the top of the repository.
+            saved = context.cwd
+            context.cwd = repository.root if repository else None
+            try:
+                return evaluate_command(f"{alias[1:]} {rest}", context, depth + 1)
+            finally:
+                context.cwd = saved
         expanded = [token.text for segment in lex(alias) for token in segment]
-        return evaluate_git(expanded + sub_args, context, depth + 1, inline_aliases)
-    return evaluate_push(sub_args, workflow)
+        return evaluate_git(expanded + sub_args, context, depth + 1, inline_aliases, directories)
+    return evaluate_push(sub_args, workflow, repository=repository)
 
 
 def record_git_alias(args: List[str], context: ShellContext) -> None:
@@ -782,11 +893,18 @@ def record_git_alias(args: List[str], context: ShellContext) -> None:
         context.git_aliases[positionals[0][len("alias.") :].lower()] = " ".join(positionals[1:])
 
 
-def evaluate_unresolved(words: List[str], context: ShellContext) -> Decision:
+def evaluate_unresolved(
+    words: List[str], context: ShellContext, repository: Optional[wg.Repository] = None
+) -> Decision:
     """A command whose name is only known at run time: a ``push`` among its words is treated as a git push."""
     lowered = [word.lower() for word in words]
     if "push" in lowered:
-        return evaluate_push(words[lowered.index("push") + 1 :], context.workflow, resolved=False)
+        return evaluate_push(
+            words[lowered.index("push") + 1 :],
+            context.workflow,
+            resolved=False,
+            repository=repository or context.repository(),
+        )
     if lowered and lowered[0] in AZ_DEVOPS_GROUPS | {"rest"}:
         return ("ask", f"`{' '.join(words)}` looks like an az command the hooks cannot resolve. Allow it?")
     return NO_DECISION
@@ -867,9 +985,15 @@ def evaluate_launcher(launcher: str, tokens: List[Token], context: ShellContext,
     text = rest[0].text if len(rest) == 1 and rest[0].quoted else " ".join(token.text for token in rest)
     if depth > MAX_NESTING:
         return evaluate_opaque(text, f"`{launcher}` (nested too deeply to be parsed)")
-    if launcher == "eval" or (len(rest) == 1 and rest[0].quoted):
-        return evaluate_command(text, context, depth)
-    return evaluate_segment(rest, context, depth)
+    # A child shell's cd does not move the commands after it; eval and iex run in the current shell.
+    saved = context.cwd
+    try:
+        if launcher == "eval" or (len(rest) == 1 and rest[0].quoted):
+            return evaluate_command(text, context, depth)
+        return evaluate_segment(rest, context, depth)
+    finally:
+        if launcher not in CURRENT_SHELL_LAUNCHERS:
+            context.cwd = saved
 
 
 def evaluate_interpreter(name: str, texts: List[str]) -> Decision:
@@ -938,6 +1062,9 @@ def evaluate_segment(tokens: List[Token], context: ShellContext, depth: int) -> 
         return most_restrictive(decision, evaluate_segment(replaced, context, depth + 1))
     name = command_name(word)
     args = texts[start + 1 :]
+    if name in CHANGE_DIRECTORY:
+        context.change_directory(name, args)
+        return decision
     if any(text.lower().endswith(CLOSE_SCRIPT) for text in texts[start : start + 3]):
         workflow = context.workflow
         return most_restrictive(
@@ -950,8 +1077,8 @@ def evaluate_segment(tokens: List[Token], context: ShellContext, depth: int) -> 
         )
     if name == "git":
         result = evaluate_git(args, context, depth)
-    elif name == "push":
-        result = evaluate_push(args, context.workflow, resolved=False)  # the rest of `$(echo git) push ...`
+    elif name == "push":  # the rest of `$(echo git) push ...`
+        result = evaluate_push(args, context.workflow, resolved=False, repository=context.repository())
     elif name == "az":
         result = evaluate_az(args)
     elif name in HTTP_CLIENTS and any(ADO_HOST_RE.search(arg) for arg in args):
@@ -982,7 +1109,9 @@ def evaluate_command(command: str, context: Any, depth: int = 0) -> Decision:
 
 
 def evaluate_shell(command: str, hook: wg.HookInput, workflow: wg.Workflow) -> Decision:
-    decision = evaluate_command(command, ShellContext(workflow, stages=bool(GIT_STAGE_RE.search(command))))
+    context = ShellContext(workflow, stages=bool(GIT_STAGE_RE.search(command)), cwd=Path(hook.cwd))
+    context.scoped_cd = bool(SCOPED_CD_RE.search(command))
+    decision = evaluate_command(command, context)
     if wg.mentions_protected_path(command) and SHELL_WRITE_RE.search(command):
         decision = most_restrictive(
             decision,
@@ -1001,11 +1130,58 @@ def _matches(value: Any, expected: str) -> bool:
     return str(value or "").strip().lower() == expected.strip().lower()
 
 
+def repository_names(repository: wg.Repository) -> List[str]:
+    """Names a PR call may use for ``repository``: its Azure Repos name, else its folder and origin names."""
+    coordinates = wg.ado_coordinates(repository.root)
+    if coordinates:
+        return [coordinates["repository"]]
+    names = [repository.path, PurePosixPath(repository.path).name]
+    origin = wg.git(repository.root, "config", "--get", "remote.origin.url")
+    if origin:
+        names.append(re.sub(r"\.git$", "", origin.strip().rstrip("/").replace("\\", "/").rsplit("/", 1)[-1]))
+    return [name for name in names if name and name != "."]
+
+
+def pr_repository(name: str, workflow: wg.Workflow) -> Tuple[Optional[wg.Repository], Optional[str]]:
+    """The workflow repository a draft PR call targets (``repositoryId``), or why it cannot be told."""
+    repositories = workflow.repositories
+    if len(repositories) == 1:
+        return repositories[0], None
+    shown = ", ".join(f"{repository.path} ({'/'.join(repository_names(repository))})" for repository in repositories)
+    if not name:
+        return None, f"name the repository of the PR in repositoryId, one of the workflow's repositories: {shown}."
+    if GUID_RE.match(name):
+        return None, (
+            "a multi-repository workflow tells its repositories apart by name: give the repository name of the "
+            f"project contract in repositoryId, not its ID ({shown})."
+        )
+    found = [
+        repository
+        for repository in repositories
+        if any(_matches(name, candidate) for candidate in repository_names(repository))
+    ]
+    if len(found) == 1:
+        return found[0], None
+    if not found:
+        return None, f"repository '{name}' is not one of the workflow's repositories: {shown}."
+    return None, f"repository '{name}' matches several repositories of the workflow: {shown}."
+
+
 def evaluate_pr_create(args: Dict[str, Any], workflow: wg.Workflow) -> Decision:
     if workflow.phase not in wg.PR_CREATION_PHASES:
         return deny(f"draft PRs are created at the end of the build phase; the current phase is '{workflow.phase}'.")
-    if workflow.pull_request:
-        return deny(f"the workflow already has draft PR {workflow.pull_request}: update it instead.")
+    repository = str(args.get("repositoryId") or args.get("repository") or "").strip()
+    target_repository, problem = pr_repository(repository, workflow)
+    if target_repository is None:
+        return deny(f"draft PR blocked: {problem}")
+    multi = workflow.multi_repo
+    if target_repository.pull_request:
+        if not multi:
+            return deny(f"the workflow already has draft PR {target_repository.pull_request}: update it instead.")
+        return deny(
+            f"repository '{target_repository.path}' already has draft PR {target_repository.pull_request}: "
+            "update it instead."
+        )
     if not is_true(args.get("isDraft")):
         return deny("only draft PRs are allowed: set isDraft to true. The user publishes the PR after reviewing it.")
     if is_true(args.get("autoComplete")) or is_true(args.get("bypassPolicy")):
@@ -1016,8 +1192,7 @@ def evaluate_pr_create(args: Dict[str, Any], workflow: wg.Workflow) -> Decision:
             f"the description has {utf16_length(description)} UTF-16 characters; Azure DevOps accepts at most "
             f"{wg.PR_DESCRIPTION_LIMIT}. Shorten pr-description.md."
         )
-    root = workflow.root
-    repository = str(args.get("repositoryId") or args.get("repository") or "").strip()
+    root = target_repository.root
     project = str(args.get("project") or "").strip()
     coordinates = wg.ado_coordinates(root)
     if coordinates:
@@ -1030,48 +1205,63 @@ def evaluate_pr_create(args: Dict[str, Any], workflow: wg.Workflow) -> Decision:
                 f"draft PR blocked: repository '{repository}' is not the workflow's repository "
                 f"'{coordinates['repository']}' (origin)."
             )
-    head = wg.head_sha(root)
-    blocked = wg.review_gate(workflow, head=head)
+    statuses = wg.workflow_status(workflow, with_merge_base=len(workflow.repositories) > 1)
+    blocked = wg.review_gate(workflow, statuses)
     if blocked:
         return deny(f"draft PR blocked: {blocked}")
+    status = next(item for item in statuses if item.repository.path == target_repository.path)
+    head = status.head
+    where = workflow.repository_label(target_repository)
+    if len(statuses) > 1 and not status.changed:
+        return deny(
+            f"draft PR blocked: {target_repository.path} has no commit on top of "
+            f"{target_repository.base_branch or 'its base branch'}: nothing to merge there."
+        )
     branch = wg.current_branch(root)
     if not branch:
-        return deny("draft PR blocked: HEAD is detached; check out the work branch.")
+        return deny(f"draft PR blocked: HEAD{where} is detached; check out the work branch.")
     if branch != workflow.branch:
-        return deny(f"draft PR blocked: the current branch is '{branch}', not the work branch '{workflow.branch}'.")
-    base_branch = workflow.base_branch
+        return deny(
+            f"draft PR blocked: the current branch{where} is '{branch}', not the work branch '{workflow.branch}'."
+        )
+    base_branch = target_repository.base_branch
     source = str(args.get("sourceRefName") or "")
     if source.strip() and normalize_ref(source) != branch:
         return deny(f"draft PR blocked: sourceRefName '{source}' is not the reviewed branch '{branch}'.")
     target = normalize_ref(str(args.get("targetRefName") or ""))
     if base_branch and target and target != base_branch:
         return deny(
-            f"draft PR blocked: targetRefName '{target}' differs from base_branch '{base_branch}' in state.json. "
-            "Fix the call, or update state.json if the user chose another target."
+            f"draft PR blocked: targetRefName '{target}' differs from base_branch '{base_branch}'{where} in "
+            "state.json. Fix the call, or update state.json if the user chose another target."
         )
     if wg.remote_branch_sha(root, branch) != head:
+        push = f"git -C {target_repository.path} push -u origin {branch}" if multi else f"git push -u origin {branch}"
         return deny(
-            f"draft PR blocked: origin/{branch} is not at the reviewed commit {head[:8] if head else '?'}. "
-            f"Push first (git push -u origin {branch})."
+            f"draft PR blocked: origin/{branch}{where} is not at the reviewed commit {head[:8] if head else '?'}. "
+            f"Push first ({push})."
         )
     title = str(args.get("title") or "").strip()
-    where = f"{project or '?'}/{repository or '?'}"
+    shown = f"{project or '?'}/{repository or '?'}"
     if not coordinates:
-        where += " (not verified: origin is not an Azure Repos URL)"
+        shown += " (not verified: origin is not an Azure Repos URL)"
     return (
         "ask",
-        f"Create the DRAFT pull request '{title}' in {where} from {branch} into {target or base_branch or '?'} "
-        f"(review APPROVED at {head[:8] if head else '?'})?",
+        f"Create the DRAFT pull request '{title}' in {shown}{where} from {branch} into "
+        f"{target or base_branch or '?'} (review APPROVED at {head[:8] if head else '?'})?",
     )
 
 
 def check_pr_scope(args: Dict[str, Any], workflow: wg.Workflow, what: str) -> Optional[str]:
-    expected = workflow.pull_request
-    if not expected:
-        return f"{what}: the workflow has no draft PR yet (state.json pull_request)."
+    pull_requests = workflow.pull_requests()
+    if not pull_requests:
+        where = f"the pull_request of its repositories in {wg.REPOSITORIES_FIELD}" if workflow.multi_repo else ""
+        return f"{what}: the workflow has no draft PR yet (state.json {where or 'pull_request'})."
     given = str(args.get("pullRequestId") or "").strip()
-    if given != expected:
-        return f"{what}: pullRequestId '{given or 'missing'}' is not the workflow's PR {expected}."
+    if given not in pull_requests:
+        if not workflow.multi_repo:
+            return f"{what}: pullRequestId '{given or 'missing'}' is not the workflow's PR {workflow.pull_request}."
+        shown = ", ".join(f"{number} ({repository.path})" for number, repository in pull_requests.items())
+        return f"{what}: pullRequestId '{given or 'missing'}' is not one of the workflow's PRs: {shown}."
     return None
 
 
@@ -1113,12 +1303,14 @@ def evaluate_thread_write(args: Dict[str, Any], workflow: wg.Workflow) -> Decisi
         return deny(blocked)
     if action == "update_status":
         thread = args.get("threadId")
-        if str(thread or "") == str(workflow.state.get("record_thread") or "-"):
+        given = str(args.get("pullRequestId") or "").strip()
+        repository = workflow.pull_requests()[given]
+        if str(thread or "") == str(repository.record_thread or "-"):
             return deny("the workflow record thread keeps its status (azure-devops skill).")
         return (
             "ask",
-            f"Set thread {thread} of PR {workflow.pull_request} to '{args.get('status')}'? Only AI threads the "
-            "workflow opened may change status; human threads are resolved by their authors.",
+            f"Set thread {thread} of PR {given}{workflow.repository_label(repository)} to '{args.get('status')}'? "
+            "Only AI threads the workflow opened may change status; human threads are resolved by their authors.",
         )
     content = args.get("content")
     if not isinstance(content, str) or not content.lstrip().startswith(wg.AI_MARKER):

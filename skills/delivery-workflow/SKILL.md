@@ -21,7 +21,7 @@ Interactive agents hand over with handoff buttons (`send: false`): the user vali
 
 ## Artifacts
 
-All workflow files live under `.ai/` at the repository root. They are excluded from git through `.git/info/exclude` and never committed.
+All workflow files live under `.ai/` in the **workflow root**: the repository root, or the folder that holds the repositories of a [multi-repository project](#multi-repository-projects). They are excluded from git through `.git/info/exclude` and never committed.
 
 | File | Written by | Purpose |
 |---|---|---|
@@ -58,9 +58,10 @@ Write it with the file edit tools only (a full write or an exact string replacem
 | `work_item` | Azure DevOps work item ID, or `null` | challenger |
 | `brief_validated` | `{"at": "<ISO date>", "head": "<HEAD sha>"}` once the user validated `brief.md` | challenger |
 | `plan_validated` | Same, once the user validated `plan.md` | architect (builder on the fast path) |
-| `lots_done` | Append-only list of `{"lot": <n>, "commit": "<sha>"}`, one per committed lot | builder |
-| `pull_request` | Draft PR ID once created, or `null`; set once | builder |
-| `record_thread` | ID of the workflow record thread on the draft PR, or `null`; set once | builder |
+| `lots_done` | Append-only list of `{"lot": <n>, "commit": "<sha>"}`, one per committed lot (plus `"repository": "<path>"` in a multi-repository project) | builder |
+| `pull_request` | Draft PR ID once created, or `null`; set once (per repository in `repositories` when they are listed) | builder |
+| `record_thread` | ID of the workflow record thread on the draft PR, or `null`; set once (per repository, likewise) | builder |
+| `repositories` | Multi-repository project only: the repositories the workflow changes ([below](#multi-repository-projects)); `[]` otherwise | challenger (architect may refine it in `design`) |
 | `review_iterations` | Reviewer runs in the current build or feedback cycle, 2 at most | builder, before each reviewer run |
 | `escalation` | `{"from": "<phase>", "reason": "..."}` while `escalated` | the agent that escalates |
 | `language` | Language of the user's request (`fr`, `en`, ...) | challenger |
@@ -90,9 +91,38 @@ Escalate whenever you stop for a decision you cannot make yourself (review limit
 
 ### Close step
 
-Once the user completed or abandoned the PR (or abandons the workflow), close it with `python <plugin>/scripts/close_workflow.py --repo . --reason "<why>"` (`python3` on Linux and macOS; `<plugin>` is the folder two levels above this skill). The hook asks the user to confirm. The script sets `phase: done`, moves `.ai/<slug>/` to `.ai/archive/<slug>/` and removes `.ai/current`. Nobody edits `state.json` by hand to close a workflow.
+Once the user completed or abandoned the PR (or abandons the workflow), close it with `python <plugin>/scripts/close_workflow.py --repo . --reason "<why>"` (`python3` on Linux and macOS; `<plugin>` is the folder two levels above this skill; `--repo` is the repository or the workspace). The hook asks the user to confirm. The script sets `phase: done`, moves `.ai/<slug>/` to `.ai/archive/<slug>/` and removes `.ai/current`. Nobody edits `state.json` by hand to close a workflow.
 
 Its JSON output carries `usage_table`: the cost of each agent (tokens and estimated GitHub AI credits) as a Markdown table followed by its notes. Show it to the user as is, table and notes, without recomputing, rounding or completing any figure: `n/d` stays `n/d`. The same table is available at any time with `python <plugin>/scripts/usage_report.py --repo .` (add `--slug <slug>` for an archived workflow).
+
+## Multi-repository projects
+
+When a project spans several git repositories, `.ai/` may sit one level up, in the folder that holds them (the **workspace**, opened in VS Code):
+
+```
+workspace/          ← workflow root: .ai/ and the workspace AGENTS.md
+├─ .ai/
+├─ api/             ← git repository
+└─ web/             ← git repository
+```
+
+The hooks look for `.ai/current` from the working folder up to the folder that holds its repository, never higher. In a workspace, `state.json` lists the repositories the workflow changes:
+
+```json
+"repositories": [
+  {"path": "api", "pull_request": null, "record_thread": null},
+  {"path": "web", "base_branch": "develop", "pull_request": null, "record_thread": null}
+]
+```
+
+- `path` is the repository folder, directly in the workflow root (`api`, not `services/api`). `base_branch` defaults to the top-level `base_branch`. Each entry must be the root of a git repository when the build starts; the list (folders and base branches) is fixed from then on.
+- A repository of the workspace that is not listed is not governed by the workflow: list every repository the change may touch.
+- The work branch is `ai/<slug>` in each listed repository. Run git commands from inside the repository, or with `git -C <path>`, so the hooks know which repository a commit or a push belongs to.
+- One review covers every repository: `reviewed_sha` names the HEAD of each repository with changes, `api=<sha> web=<sha>` (`code-review` skill).
+- Each repository with changes gets its own draft PR and its own workflow record thread: the builder sets `pull_request` and `record_thread` in its entry (set once). The top-level `pull_request` and `record_thread` stay `null`.
+- The project contract lives in the workspace `AGENTS.md`, with one row per repository (`project-onboarding` skill, `--workspace`); each repository may keep its own `AGENTS.md` for its commands.
+
+With a single repository, leave `repositories` empty: `.ai/` stays at the repository root and nothing else changes.
 
 ## Triage paths
 
@@ -126,6 +156,6 @@ When a project skill and a plugin skill disagree, the project skill wins. List t
 
 ## Gates enforced by hooks
 
-The hooks act only while a workflow is active (`.ai/current` present, `phase` not `done`). Their rules are listed once, in [the gates reference](./references/gates.md): protected files, phase transitions, roles, Stop gates, shell commands, Azure DevOps tools and the decision log. Read it when a hook denies or asks.
+The hooks act only while a workflow is active (`.ai/current` present, `phase` not `done`), in the workflow root and in the repositories the workflow lists. Their rules are listed once, in [the gates reference](./references/gates.md): protected files, phase transitions, roles, Stop gates, shell commands, Azure DevOps tools and the decision log. Read it when a hook denies or asks.
 
 A denial is not an obstacle to work around: read its reason, fix the precondition, or escalate to the user.

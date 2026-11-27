@@ -10,6 +10,10 @@
   the folders those tools write to ``.git/info/exclude``, so a mutation run leaves the working tree clean.
 * With ``--docs``: creates the architecture map skeleton (``docs/architecture/`` by default) without
   overwriting existing files; the architecture-mapping skill fills it.
+* With ``--workspace <folder>`` (multi-repository project, ADR 0011): the folder opened in VS Code that
+  holds ``.ai/`` and the repositories. ``.vscode/mcp.json`` goes there instead of the repository; when
+  that folder is itself inside another git repository, ``.ai/`` and a newly created, untracked
+  ``.vscode/mcp.json`` are excluded from that repository too. Run the script once per repository.
 
 Prints a JSON summary on stdout and never prints credentials. Exit codes: 0 done, 1 error,
 3 ``ado-read``/``ado-write`` definitions conflict (rerun with ``--force``). Files are written in
@@ -417,6 +421,15 @@ def print_json(data: Any) -> None:
     sys.stdout.write(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
 
 
+def workspace_location(workspace: Path, root: Path) -> Optional[str]:
+    """The repository folder relative to the workspace (``.`` when they are the same), or None outside it."""
+    try:
+        relative = root.resolve().relative_to(workspace.resolve()).as_posix()
+    except ValueError:
+        return None
+    return relative or "."
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Onboard a repository to the ai-driven-dev-harness.")
     parser.add_argument("--repo", default=".", help="Path inside the git repository (default: current directory).")
@@ -437,6 +450,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         action="append",
         choices=[*MUTATION_TOOLS, NO_MUTATION_TOOL],
         help="Mutation testing tool of the project, instead of the detected ones (repeatable; 'none' for no tool).",
+    )
+    parser.add_argument(
+        "--workspace",
+        help="Multi-repository project: the folder opened in VS Code that holds .ai/ and the repositories "
+        "(it receives .vscode/mcp.json).",
     )
     args = parser.parse_args(argv)
     docs_path = None
@@ -463,6 +481,24 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 1
     root = Path(root_text)
     summary: Dict[str, Any] = {"ok": True, "dry_run": args.dry_run, "repo_root": str(root), "warnings": []}
+    workspace: Optional[Path] = None
+    summary["workspace"] = None
+    if args.workspace:
+        candidate = Path(args.workspace)
+        location = workspace_location(candidate, root) if candidate.is_dir() else None
+        if location is None:
+            print_json(
+                {
+                    "ok": False,
+                    "error": f"--workspace '{args.workspace}' must be an existing folder that holds the repository "
+                    f"'{root}'.",
+                }
+            )
+            return EXIT_ERROR
+        if location != ".":
+            workspace = candidate.resolve()
+            summary["workspace"] = {"root": str(workspace), "repository_path": location}
+    config_root = workspace or root
 
     remote = git(root, "remote", "get-url", "origin")
     summary["remote"] = redact_remote(remote) if remote else None
@@ -488,11 +524,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             f"Start '{DOCS_SERVER}' from the MCP view: the agents check .NET APIs in the Microsoft Learn documentation "
             "(dotnet-performance skill)."
         )
+    workspace_exclude: List[str] = []
     if desired:
-        mcp = merge_mcp_config(root, desired, args.dry_run, args.force)
-        mcp["tracked"] = git(root, "ls-files", "--error-unmatch", MCP_CONFIG) is not None
+        mcp = merge_mcp_config(config_root, desired, args.dry_run, args.force)
+        mcp["tracked"] = git(config_root, "ls-files", "--error-unmatch", MCP_CONFIG) is not None
+        if workspace is not None:
+            mcp["path"] = str(workspace / MCP_CONFIG)
         if mcp["action"] == "created" and not mcp["tracked"]:
-            exclude.append(MCP_CONFIG)
+            (workspace_exclude if workspace is not None else exclude).append(MCP_CONFIG)
         summary["mcp_json"] = mcp
     else:
         summary["mcp_json"] = None
@@ -530,6 +569,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "or pick a tool from the mutation-testing skill and rerun with --mutation-tool."
         )
     summary["git_exclude"] = ensure_excluded(root, exclude, args.dry_run)
+    summary["workspace_git_exclude"] = None
+    if workspace is not None:
+        # A workspace folder inside another repository (a "meta" repository): keep .ai/ out of it too.
+        outer = git(workspace, "rev-parse", "--show-toplevel")
+        if outer and Path(outer).resolve() != root.resolve():
+            prefix = workspace_location(Path(outer), workspace) or "."
+            prefix = "" if prefix == "." else prefix + "/"
+            entries = [prefix + WORKFLOW_EXCLUDE, *(prefix + entry for entry in workspace_exclude)]
+            summary["workspace_git_exclude"] = ensure_excluded(Path(outer), entries, args.dry_run)
+        next_steps.append(
+            f"Run this script for every repository of the workspace with --workspace {workspace}, open VS Code on "
+            "that folder, and list the repositories in the AGENTS.md of the workspace (project-onboarding skill)."
+        )
     summary["architecture_docs"] = scaffold_docs(root, docs_path, args.dry_run) if docs_path else None
     if docs_path:
         next_steps.append(
